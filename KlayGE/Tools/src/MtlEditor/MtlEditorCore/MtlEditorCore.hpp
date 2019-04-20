@@ -135,6 +135,7 @@ namespace KlayGE
 
 		LightSourcePtr ambient_light_;
 		LightSourcePtr main_light_;
+		SceneNodePtr main_light_node_;
 
 		SceneNodePtr object_;
 		RenderModelPtr model_;

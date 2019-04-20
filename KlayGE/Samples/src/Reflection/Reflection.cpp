@@ -235,14 +235,17 @@ void ScreenSpaceReflectionApp::OnCreate()
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube_, c_cube_);
 	ambient_light->Color(float3(0.1f, 0.1f, 0.1f));
-	ambient_light->AddToSceneManager();
+	root_node.AddComponent(ambient_light);
 
-	point_light_ = MakeSharedPtr<PointLightSource>();
-	point_light_->Attrib(LightSource::LSA_NoShadow);
-	point_light_->Color(float3(1, 1, 1));
-	point_light_->Position(float3(0, 3, -2));
-	point_light_->Falloff(float3(1, 0, 0.3f));
-	point_light_->AddToSceneManager();
+	auto point_light = MakeSharedPtr<PointLightSource>();
+	point_light->Attrib(LightSource::LSA_NoShadow);
+	point_light->Color(float3(1, 1, 1));
+	point_light->Falloff(float3(1, 0, 0.3f));
+
+	auto point_light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	point_light_node->TransformToParent(MathLib::translation(0.0f, 3.0f, -2.0f));
+	point_light_node->AddComponent(point_light);
+	root_node.AddChild(point_light_node);
 
 	deferred_rendering_ = Context::Instance().DeferredRenderingLayerInstance();
 

@@ -49,39 +49,6 @@ namespace KlayGE
 		attrib_ = attrib;
 	}
 
-	bool LightSource::Enabled() const
-	{
-		return enabled_;
-	}
-
-	void LightSource::Enabled(bool enabled)
-	{
-		enabled_ = enabled;
-	}
-
-	void LightSource::BindUpdateFunc(std::function<void(LightSource&, float, float)> const & update_func)
-	{
-		update_func_ = update_func;
-	}
-
-	void LightSource::Update(float app_time, float elapsed_time)
-	{
-		if (update_func_)
-		{
-			update_func_(*this, app_time, elapsed_time);
-		}
-	}
-
-	void LightSource::AddToSceneManager()
-	{
-		Context::Instance().SceneManagerInstance().AddLight(this->shared_from_this());
-	}
-
-	void LightSource::DelFromSceneManager()
-	{
-		Context::Instance().SceneManagerInstance().DelLight(this->shared_from_this());
-	}
-
 	float4 const & LightSource::Color() const
 	{
 		return color_;
@@ -125,40 +92,25 @@ namespace KlayGE
 		KFL_UNREACHABLE("Can't be called");
 	}
 
-	float3 const & LightSource::Position() const
+	float3 LightSource::Position() const
 	{
-		return pos_;
-	}
-
-	void LightSource::Position(float3 const & pos)
-	{
-		pos_ = pos;
+		float4x4 const& mat = this->BoundSceneNode()->TransformToWorld();
+		return float3(mat(3, 0), mat(3, 1), mat(3, 2));
 	}
 
 	float3 LightSource::Direction() const
 	{
-		return MathLib::transform_quat(float3(0, 0, 1), quat_);
-	}
-	
-	void LightSource::Direction(float3 const & dir)
-	{
-		quat_ = MathLib::axis_to_axis(float3(0, 0, 1), dir);
+		float4x4 const& mat = this->BoundSceneNode()->TransformToWorld();
+		return float3(mat(2, 0), mat(2, 1), mat(2, 2));
 	}
 
-	Quaternion const & LightSource::Rotation() const
-	{
-		return quat_;
-	}
-
-	void LightSource::Rotation(Quaternion const & quat)
-	{
-		quat_ = quat;
-	}
-
-	void LightSource::ModelMatrix(float4x4 const & model)
+	Quaternion LightSource::Rotation() const
 	{
 		float3 scale;
-		MathLib::decompose(scale, quat_, pos_, model);
+		Quaternion rot;
+		float3 trans;
+		MathLib::decompose(scale, rot, trans, this->BoundSceneNode()->TransformToWorld());
+		return rot;
 	}
 
 	float3 const & LightSource::Falloff() const
@@ -341,34 +293,14 @@ namespace KlayGE
 	{
 	}
 
-	void PointLightSource::Update(float app_time, float elapsed_time)
+	void PointLightSource::MainThreadUpdate(float app_time, float elapsed_time)
 	{
-		LightSource::Update(app_time, elapsed_time);
+		SceneComponent::MainThreadUpdate(app_time, elapsed_time);
 
 		if (!(attrib_ & LSA_NoShadow))
 		{
 			this->UpdateCameras();
 		}
-	}
-
-	void PointLightSource::Position(float3 const & pos)
-	{
-		LightSource::Position(pos);
-	}
-	
-	void PointLightSource::Direction(float3 const & dir)
-	{
-		LightSource::Direction(dir);
-	}
-
-	void PointLightSource::Rotation(Quaternion const & quat)
-	{
-		LightSource::Rotation(quat);
-	}
-	
-	void PointLightSource::ModelMatrix(float4x4 const & model)
-	{
-		LightSource::ModelMatrix(model);
 	}
 
 	void PointLightSource::UpdateCameras()
@@ -381,10 +313,15 @@ namespace KlayGE
 			float3 d, u;
 			std::tie(d, u) = CubeMapViewVector<float>(static_cast<Texture::CubeFaces>(i));
 
-			float3 lookat = MathLib::transform_quat(d, quat_);
-			float3 up = MathLib::transform_quat(u, quat_);
+			float3 scale;
+			Quaternion quat;
+			float3 pos;
+			MathLib::decompose(scale, quat, pos, this->BoundSceneNode()->TransformToWorld());
 
-			sm_cameras_[i]->ViewParams(pos_, pos_ + lookat, up);
+			float3 lookat = MathLib::transform_quat(d, quat);
+			float3 up = MathLib::transform_quat(u, quat);
+
+			sm_cameras_[i]->ViewParams(pos, pos + lookat, up);
 			sm_cameras_[i]->ProjParams(PI / 2, 1, scene_camera.NearPlane(), scene_camera.FarPlane());
 		}
 	}
@@ -424,9 +361,9 @@ namespace KlayGE
 	{
 	}
 
-	void SpotLightSource::Update(float app_time, float elapsed_time)
+	void SpotLightSource::MainThreadUpdate(float app_time, float elapsed_time)
 	{
-		LightSource::Update(app_time, elapsed_time);
+		SceneComponent::MainThreadUpdate(app_time, elapsed_time);
 
 		if (!(attrib_ & LSA_NoShadow))
 		{
@@ -434,32 +371,17 @@ namespace KlayGE
 		}
 	}
 
-	void SpotLightSource::Position(float3 const & pos)
-	{
-		LightSource::Position(pos);
-	}
-	
-	void SpotLightSource::Direction(float3 const & dir)
-	{
-		LightSource::Direction(dir);
-	}
-
-	void SpotLightSource::Rotation(Quaternion const & quat)
-	{
-		LightSource::Rotation(quat);
-	}
-
-	void SpotLightSource::ModelMatrix(float4x4 const & model)
-	{
-		LightSource::ModelMatrix(model);
-	}
-
 	void SpotLightSource::UpdateCamera()
 	{
-		float3 lookat = MathLib::transform_quat(float3(0, 0, 1), quat_);
-		float3 up = MathLib::transform_quat(float3(0, 1, 0), quat_);
+		float3 scale;
+		Quaternion quat;
+		float3 pos;
+		MathLib::decompose(scale, quat, pos, this->BoundSceneNode()->TransformToWorld());
 
-		sm_camera_->ViewParams(pos_, pos_ + lookat, up);
+		float3 lookat = MathLib::transform_quat(float3(0, 0, 1), quat);
+		float3 up = MathLib::transform_quat(float3(0, 1, 0), quat);
+
+		sm_camera_->ViewParams(pos, pos + lookat, up);
 
 		auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		auto const& scene_camera = *re.CurFrameBuffer()->GetViewport()->camera;
@@ -533,9 +455,9 @@ namespace KlayGE
 		attrib_ &= ~LSA_IndirectLighting;
 	}
 
-	void DirectionalLightSource::Update(float app_time, float elapsed_time)
+	void DirectionalLightSource::MainThreadUpdate(float app_time, float elapsed_time)
 	{
-		LightSource::Update(app_time, elapsed_time);
+		LightSource::MainThreadUpdate(app_time, elapsed_time);
 
 		if (!(attrib_ & LSA_NoShadow))
 		{
@@ -553,7 +475,7 @@ namespace KlayGE
 		auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		auto const& scene_camera = *re.CurFrameBuffer()->GetViewport()->camera;
 
-		float3 const dir = this->Direction();
+		float3 const dir = MathLib::transform_normal(float3(0, 0, 1), this->BoundSceneNode()->TransformToWorld());
 
 		float3 up_vec;
 		if (MathLib::abs(MathLib::dot(-dir, scene_camera.UpVec())) > 0.95f)

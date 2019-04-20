@@ -27,8 +27,8 @@ private:
 
 	KlayGE::TrackballCameraController tb_controller_;
 
-	KlayGE::SceneObjectLightSourceProxyPtr light_proxy_;
 	KlayGE::LightSourcePtr light_;
+	KlayGE::SceneNodePtr light_node_;
 
 	KlayGE::UIDialogPtr dialog_;
 	int procedural_type_;

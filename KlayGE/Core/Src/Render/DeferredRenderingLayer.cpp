@@ -553,6 +553,10 @@ namespace KlayGE
 		default_ambient_light_ = MakeSharedPtr<AmbientLightSource>();
 		merged_ambient_light_ = MakeSharedPtr<AmbientLightSource>();
 
+		SceneManager& scene_mgr = Context::Instance().SceneManagerInstance();
+		default_ambient_light_->BindSceneNode(&scene_mgr.SceneRootNode());
+		merged_ambient_light_->BindSceneNode(&scene_mgr.SceneRootNode());
+
 #if DEFAULT_DEFERRED == TRIDITIONAL_DEFERRED
 		dr_effect_ = ASyncLoadRenderEffect("DeferredRendering.fxml");
 #elif DEFAULT_DEFERRED == LIGHT_INDEXED_DEFERRED
@@ -1406,11 +1410,11 @@ namespace KlayGE
 		lights_.clear();
 		sm_light_indices_.clear();
 
-		uint32_t const num_lights = scene_mgr.NumLights();
+		uint32_t const num_lights = scene_mgr.NumFrameLights();
 		
 		for (uint32_t i = 0; i < num_lights; ++ i)
 		{
-			auto* light = scene_mgr.GetLight(i);
+			auto* light = scene_mgr.GetFrameLight(i);
 			if (light->Enabled() && (LightSource::LT_Ambient == light->Type()))
 			{
 				merged_ambient_light_->SkylightTex(light->SkylightTexY(), light->SkylightTexC());
@@ -1434,7 +1438,7 @@ namespace KlayGE
 		uint32_t num_sm_cube_lights = 0;
 		for (uint32_t i = 0; i < num_lights; ++ i)
 		{
-			auto* light = scene_mgr.GetLight(i);
+			auto* light = scene_mgr.GetFrameLight(i);
 			if (light->Enabled())
 			{
 				if (LightSource::LT_Ambient == light->Type())
@@ -1762,7 +1766,7 @@ namespace KlayGE
 		case LightSource::LT_SphereArea:
 		case LightSource::LT_TubeArea:
 			{
-				float3 const & p = light.Position();
+				float3 const p = light.Position();
 				float4x4 light_model = MathLib::scaling(light_scale, light_scale, light_scale)
 					* MathLib::translation(p);
 				pvp.light_visibles[light_index] = (scene_mgr.AABBVisible(MathLib::transform_aabb(box_aabb_, light_model)) != BO_No);
@@ -2162,7 +2166,7 @@ namespace KlayGE
 					depth_to_esm_pp_->SetParam(1, inv_sm_proj);
 				}
 
-				float3 const & p = light.Position();
+				float3 const p = light.Position();
 				float3 loc_es = MathLib::transform_coord(p, pvp.view);
 				float4 light_pos_es_actived = float4(loc_es.x(), loc_es.y(), loc_es.z(), 1);
 

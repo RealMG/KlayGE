@@ -53,12 +53,9 @@ namespace KlayGE
 		Camera* GetCamera(uint32_t index);
 		Camera const* GetCamera(uint32_t index) const;
 
-		void AddLight(LightSourcePtr const & light);
-		void DelLight(LightSourcePtr const & light);
-
-		uint32_t NumLights() const;
-		LightSource* GetLight(uint32_t index);
-		LightSource const* GetLight(uint32_t index) const;
+		uint32_t NumFrameLights() const;
+		LightSource* GetFrameLight(uint32_t index);
+		LightSource const* GetFrameLight(uint32_t index) const;
 
 		SceneNode& SceneRootNode()
 		{
@@ -91,7 +88,6 @@ namespace KlayGE
 		virtual BoundOverlap FrustumVisible(Frustum const & frustum) const;
 
 		virtual void ClearCamera();
-		virtual void ClearLight();
 		virtual void ClearObject();
 
 		void Update();
@@ -114,7 +110,6 @@ namespace KlayGE
 		void Flush(uint32_t urt);
 
 		std::vector<CameraPtr>::iterator DelCamera(std::vector<CameraPtr>::iterator iter);
-		std::vector<LightSourcePtr>::iterator DelLight(std::vector<LightSourcePtr>::iterator iter);
 		virtual void DoSuspend() = 0;
 		virtual void DoResume() = 0;
 
@@ -126,7 +121,7 @@ namespace KlayGE
 	protected:
 		std::vector<CameraPtr> cameras_;
 		Frustum const * frustum_;
-		std::vector<LightSourcePtr> lights_;
+		std::vector<LightSourcePtr> frame_lights_;
 		SceneNode scene_root_;
 		SceneNode overlay_root_;
 
