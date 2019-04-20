@@ -877,6 +877,11 @@ void OceanApp::OnCreate()
 	reflection_fb_->GetViewport()->camera->ProjParams(scene_camera.FOV(), scene_camera.Aspect(),
 		scene_camera.NearPlane(), scene_camera.FarPlane());
 
+	auto reflection_camera_node =
+		MakeSharedPtr<SceneNode>(L"ReflectionCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	reflection_camera_node->AddComponent(reflection_fb_->GetViewport()->camera);
+	root_node.AddChild(reflection_camera_node);
+
 	fpcController_.Scalers(0.05f, 1.0f);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
@@ -1148,7 +1153,9 @@ uint32_t OceanApp::DoUpdate(uint32_t pass)
 		float3 reflect_eye, reflect_at, reflect_up;
 		checked_pointer_cast<OceanObject>(ocean_)->ReflectViewParams(reflect_eye, reflect_at, reflect_up,
 			screen_camera_->EyePos(), screen_camera_->LookAt(), screen_camera_->UpVec());
-		reflection_fb_->GetViewport()->camera->ViewParams(reflect_eye, reflect_at, reflect_up);
+		reflection_fb_->GetViewport()->camera->LookAtDist(MathLib::length(reflect_at - reflect_eye));
+		reflection_fb_->GetViewport()->camera->BoundSceneNode()->TransformToWorld(
+			MathLib::inverse(MathLib::look_at_lh(reflect_eye, reflect_at, reflect_up)));
 	}
 	else
 	{

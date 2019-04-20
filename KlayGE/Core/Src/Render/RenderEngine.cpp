@@ -121,6 +121,11 @@ namespace KlayGE
 		this->CheckConfig(settings);
 		RenderDeviceCaps const & caps = this->DeviceCaps();
 
+		auto camera_node =
+			MakeSharedPtr<SceneNode>(L"CameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+		camera_node->AddComponent(cur_frame_buffer_->GetViewport()->camera);
+		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(camera_node);
+
 		screen_frame_buffer_ = cur_frame_buffer_;
 
 		uint32_t const screen_width = screen_frame_buffer_->Width();

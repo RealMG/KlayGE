@@ -995,7 +995,6 @@ namespace KlayGE
 		PerViewport& pvp = viewports_[index];
 		pvp.attrib = attrib;
 		pvp.frame_buffer = fb;
-		pvp.frame_buffer->GetViewport()->camera->JitterMode(true);
 		pvp.sample_count = sample_count;
 		pvp.sample_quality = sample_quality;
 

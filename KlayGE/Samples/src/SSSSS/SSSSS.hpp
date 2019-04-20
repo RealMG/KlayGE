@@ -44,6 +44,7 @@ private:
 
 	KlayGE::CameraPtr scene_camera_;
 	KlayGE::CameraPtr light_camera_;
+	KlayGE::SceneNodePtr light_camera_node_;
 
 	KlayGE::UIDialogPtr dialog_params_;
 	int id_sss_;

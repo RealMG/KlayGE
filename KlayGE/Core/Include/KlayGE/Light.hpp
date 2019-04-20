@@ -134,6 +134,8 @@ namespace KlayGE
 		PointLightSource();
 		virtual ~PointLightSource();
 
+		void BindSceneNode(SceneNode* node) override;
+
 		void MainThreadUpdate(float app_time, float elapsed_time) override;
 
 		virtual TexturePtr const & ProjectiveTexture() const override;
@@ -159,6 +161,8 @@ namespace KlayGE
 
 		SpotLightSource();
 		virtual ~SpotLightSource();
+
+		void BindSceneNode(SceneNode* node) override;
 
 		void MainThreadUpdate(float app_time, float elapsed_time) override;
 
@@ -195,6 +199,8 @@ namespace KlayGE
 
 		DirectionalLightSource();
 		virtual ~DirectionalLightSource();
+
+		void BindSceneNode(SceneNode* node) override;
 
 		void MainThreadUpdate(float app_time, float elapsed_time) override;
 

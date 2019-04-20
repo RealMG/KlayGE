@@ -29,7 +29,8 @@ private:
 
 	KlayGE::FirstPersonCameraController fpcController_;
 	KlayGE::TrackballCameraController light_controller_;
-	KlayGE::Camera light_ctrl_camera_;
+	KlayGE::CameraPtr light_ctrl_camera_;
+	KlayGE::SceneNodePtr light_ctrl_camera_node_;
 
 	KlayGE::DeferredRenderingLayer* deferred_rendering_;
 

@@ -107,15 +107,15 @@ void SSSSSApp::OnCreate()
 	auto light_proxy = LoadLightSourceProxyModel(light);
 	light_proxy->RootNode()->TransformToParent(MathLib::scaling(0.1f, 0.1f, 0.1f) * light_proxy->RootNode()->TransformToParent());
 
-	light_camera_ = MakeSharedPtr<Camera>();
-	light_controller_.AttachCamera(*light_camera_);
-	light_controller_.Scalers(0.01f, 0.005f);
-	light_camera_->ViewParams(light->SMCamera(0)->EyePos(), light->SMCamera(0)->LookAt(), light->SMCamera(0)->UpVec());
-	light_camera_->ProjParams(
-		light->SMCamera(0)->FOV(), light->SMCamera(0)->Aspect(), light->SMCamera(0)->NearPlane(), light->SMCamera(0)->FarPlane());
-
 	auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable);
 	light_node->AddComponent(light);
+
+	light_camera_ = MakeSharedPtr<Camera>();
+	light_camera_node_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	light_camera_node_->AddComponent(light_camera_);
+	light_controller_.AttachCamera(*light_camera_);
+	light_controller_.Scalers(0.01f, 0.005f);
+
 	light_node->AddChild(light_proxy->RootNode());
 	light_node->OnMainThreadUpdate().Connect([this](SceneNode& node, float app_time, float elapse_time) {
 		KFL_UNUSED(app_time);

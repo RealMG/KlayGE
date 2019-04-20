@@ -36,7 +36,6 @@ namespace KlayGE
 	//////////////////////////////////////////////////////////////////////////////////
 	Camera::Camera()
 	{
-		this->ViewParams(float3(0, 0, 0), float3(0, 0, 1), float3(0, 1, 0));
 		this->ProjParams(PI / 4, 1, 1, 1000);
 	}
 
@@ -69,25 +68,6 @@ namespace KlayGE
 		return *reinterpret_cast<float3 const *>(&inv_view_mat.Row(2));
 	}
 
-	// 设置摄像机的观察矩阵
-	//////////////////////////////////////////////////////////////////////////////////
-	void Camera::ViewParams(float3 const & eye_pos, float3 const & look_at)
-	{
-		this->ViewParams(eye_pos, look_at, float3(0, 1, 0));
-	}
-
-	void Camera::ViewParams(float3 const & eye_pos, float3 const & look_at,
-										float3 const & up_vec)
-	{
-		look_at_dist_ = MathLib::length(look_at - eye_pos);
-
-		view_mat_ = MathLib::look_at_lh(eye_pos, look_at, up_vec);
-		inv_view_mat_ = MathLib::inverse(view_mat_);
-		view_proj_mat_dirty_ = true;
-		view_proj_mat_wo_adjust_dirty_ = true;
-		frustum_dirty_ = true;
-	}
-
 	// 设置摄像机的投射矩阵
 	//////////////////////////////////////////////////////////////////////////////////
 	void Camera::ProjParams(float fov, float aspect, float near_plane, float far_plane)
@@ -103,9 +83,6 @@ namespace KlayGE
 		re.AdjustProjectionMatrix(proj_mat_);
 		inv_proj_mat_ = MathLib::inverse(proj_mat_);
 		inv_proj_mat_wo_adjust_ = MathLib::inverse(proj_mat_wo_adjust_);
-		view_proj_mat_dirty_ = true;
-		view_proj_mat_wo_adjust_dirty_ = true;
-		frustum_dirty_ = true;
 	}
 
 	void Camera::ProjOrthoParams(float w, float h, float near_plane, float far_plane)
@@ -121,9 +98,6 @@ namespace KlayGE
 		re.AdjustProjectionMatrix(proj_mat_);
 		inv_proj_mat_ = MathLib::inverse(proj_mat_);
 		inv_proj_mat_wo_adjust_ = MathLib::inverse(proj_mat_wo_adjust_);
-		view_proj_mat_dirty_ = true;
-		view_proj_mat_wo_adjust_dirty_ = true;
-		frustum_dirty_ = true;
 	}
 
 	void Camera::ProjOrthoOffCenterParams(float left, float top, float right, float bottom, float near_plane, float far_plane)
@@ -139,25 +113,14 @@ namespace KlayGE
 		re.AdjustProjectionMatrix(proj_mat_);
 		inv_proj_mat_ = MathLib::inverse(proj_mat_);
 		inv_proj_mat_wo_adjust_ = MathLib::inverse(proj_mat_wo_adjust_);
-		view_proj_mat_dirty_ = true;
-		view_proj_mat_wo_adjust_dirty_ = true;
-		frustum_dirty_ = true;
 	}
 
-	void Camera::BindUpdateFunc(std::function<void(Camera&, float, float)> const & update_func)
-	{
-		update_func_ = update_func;
-	}
-
-	void Camera::Update(float app_time, float elapsed_time)
+	void Camera::MainThreadUpdate(float app_time, float elapsed_time)
 	{
 		prev_view_mat_ = this->ViewMatrix();
 		prev_proj_mat_ = proj_mat_;
 
-		if (update_func_)
-		{
-			update_func_(*this, app_time, elapsed_time);
-		}
+		SceneComponent::MainThreadUpdate(app_time, elapsed_time);
 
 		if (this->JitterMode())
 		{
@@ -184,25 +147,12 @@ namespace KlayGE
 			re.AdjustProjectionMatrix(proj_mat_);
 			inv_proj_mat_ = MathLib::inverse(proj_mat_);
 			inv_proj_mat_wo_adjust_ = MathLib::inverse(proj_mat_wo_adjust_);
-			view_proj_mat_dirty_ = true;
-			view_proj_mat_wo_adjust_dirty_ = true;
-			frustum_dirty_ = true;
 		}
-	}
-
-	void Camera::AddToSceneManager()
-	{
-		Context::Instance().SceneManagerInstance().AddCamera(this->shared_from_this());
-	}
-
-	void Camera::DelFromSceneManager()
-	{
-		Context::Instance().SceneManagerInstance().DelCamera(this->shared_from_this());
 	}
 
 	float4x4 const & Camera::ViewMatrix() const
 	{
-		return view_mat_;
+		return this->BoundSceneNode()->InverseTransformToWorld();
 	}
 
 	float4x4 const & Camera::ProjMatrix() const
@@ -215,31 +165,19 @@ namespace KlayGE
 		return proj_mat_wo_adjust_;
 	}
 
-	float4x4 const & Camera::ViewProjMatrix() const
+	float4x4 Camera::ViewProjMatrix() const
 	{
-		if (view_proj_mat_dirty_)
-		{
-			view_proj_mat_ = this->ViewMatrix() * this->ProjMatrix();
-			inv_view_proj_mat_ = this->InverseProjMatrix() * this->InverseViewMatrix();
-			view_proj_mat_dirty_ = false;
-		}
-		return view_proj_mat_;
+		return this->ViewMatrix() * this->ProjMatrix();
 	}
 
-	float4x4 const & Camera::ViewProjMatrixWOAdjust() const
+	float4x4 Camera::ViewProjMatrixWOAdjust() const
 	{
-		if (view_proj_mat_wo_adjust_dirty_)
-		{
-			view_proj_mat_wo_adjust_ = this->ViewMatrix() * this->ProjMatrixWOAdjust();
-			inv_view_proj_mat_wo_adjust_ = this->InverseProjMatrixWOAdjust() * this->InverseViewMatrix();
-			view_proj_mat_wo_adjust_dirty_ = false;
-		}
-		return view_proj_mat_wo_adjust_;
+		return this->ViewMatrix() * this->ProjMatrixWOAdjust();
 	}
 	
 	float4x4 const & Camera::InverseViewMatrix() const
 	{
-		return inv_view_mat_;
+		return this->BoundSceneNode()->TransformToWorld();
 	}
 
 	float4x4 const & Camera::InverseProjMatrix() const
@@ -252,26 +190,14 @@ namespace KlayGE
 		return inv_proj_mat_wo_adjust_;
 	}
 	
-	float4x4 const & Camera::InverseViewProjMatrix() const
+	float4x4 Camera::InverseViewProjMatrix() const
 	{
-		if (view_proj_mat_dirty_)
-		{
-			view_proj_mat_ = this->ViewMatrix() * this->ProjMatrix();
-			inv_view_proj_mat_ = this->InverseProjMatrix() * this->InverseViewMatrix();
-			view_proj_mat_dirty_ = false;
-		}
-		return inv_view_proj_mat_;
+		return this->InverseProjMatrix() * this->InverseViewMatrix();
 	}
 
-	float4x4 const & Camera::InverseViewProjMatrixWOAdjust() const
+	float4x4 Camera::InverseViewProjMatrixWOAdjust() const
 	{
-		if (view_proj_mat_wo_adjust_dirty_)
-		{
-			view_proj_mat_wo_adjust_ = this->ViewMatrix() * this->ProjMatrixWOAdjust();
-			inv_view_proj_mat_wo_adjust_ = this->InverseProjMatrixWOAdjust() * this->InverseViewMatrix();
-			view_proj_mat_wo_adjust_dirty_ = false;
-		}
-		return inv_view_proj_mat_wo_adjust_;
+		return this->InverseProjMatrixWOAdjust() * this->InverseViewMatrix();
 	}
 
 	float4x4 const & Camera::PrevViewMatrix() const
@@ -292,11 +218,7 @@ namespace KlayGE
 
 	Frustum const & Camera::ViewFrustum() const
 	{
-		if (frustum_dirty_)
-		{
-			frustum_.ClipMatrix(this->ViewProjMatrixWOAdjust(), this->InverseViewProjMatrixWOAdjust());
-			frustum_dirty_ = false;
-		}
+		frustum_.ClipMatrix(this->ViewProjMatrixWOAdjust(), this->InverseViewProjMatrixWOAdjust());
 		return frustum_;
 	}
 

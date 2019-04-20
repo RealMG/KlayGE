@@ -66,8 +66,15 @@ void CascadedShadowMapApp::OnCreate()
 	this->LookAt(float3(-25.72f, 29.65f, 24.57f), float3(-24.93f, 29.09f, 24.32f));
 	this->Proj(0.05f, 300.0f);
 
-	light_ctrl_camera_.ViewParams(float3(-50, 50, -50), float3(0, 0, 0), float3(0, 1, 0));
-	light_controller_.AttachCamera(light_ctrl_camera_);
+	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
+
+	light_ctrl_camera_node_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	light_ctrl_camera_ = MakeSharedPtr<Camera>();
+	light_ctrl_camera_node_->AddComponent(light_ctrl_camera_);
+	float3 const light_pos = float3(-50, 50, -50);
+	light_ctrl_camera_->LookAtDist(MathLib::length(light_pos));
+	light_ctrl_camera_node_->TransformToParent(MathLib::inverse(MathLib::look_at_lh(light_pos, float3(0, 0, 0), float3(0, 1, 0))));
+	light_controller_.AttachCamera(*light_ctrl_camera_);
 	light_controller_.Scalers(0.003f, 0.003f);
 
 	TexturePtr c_cube = ASyncLoadTexture("Lake_CraterLake03_filtered_c.dds", EAH_GPU_Read | EAH_Immutable);
@@ -87,8 +94,6 @@ void CascadedShadowMapApp::OnCreate()
 	deferred_rendering_ = Context::Instance().DeferredRenderingLayerInstance();
 	deferred_rendering_->SSVOEnabled(0, false);
 
-	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
-
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube, c_cube);
 	ambient_light->Color(float3(0.1f, 0.1f, 0.1f));
@@ -102,7 +107,7 @@ void CascadedShadowMapApp::OnCreate()
 		KFL_UNUSED(app_time);
 		KFL_UNUSED(elapsed_time);
 
-		node.TransformToParent(light_ctrl_camera_.InverseViewMatrix());
+		node.TransformToParent(light_ctrl_camera_->InverseViewMatrix());
 	});
 	sun_light_node->AddComponent(sun_light);
 	root_node.AddChild(sun_light_node);

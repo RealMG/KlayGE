@@ -293,6 +293,45 @@ namespace KlayGE
 	{
 	}
 
+	void PointLightSource::BindSceneNode(SceneNode* node)
+	{
+		{
+			auto* curr_node = this->BoundSceneNode();
+			if (curr_node != nullptr)
+			{
+				for (int i = 0; i < 6; ++i)
+				{
+					auto* curr_camera_node = sm_cameras_[i]->BoundSceneNode();
+					if (curr_camera_node != nullptr)
+					{
+						curr_node->RemoveChild(curr_camera_node);
+					}
+				}
+			}
+		}
+
+		SceneComponent::BindSceneNode(node);
+
+		{
+			if (node != nullptr)
+			{
+				for (uint32_t i = 0; i < 6; ++i)
+				{
+					auto camera_node = MakeSharedPtr<SceneNode>(
+						L"ShadowCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+					camera_node->AddComponent(sm_cameras_[i]);
+					node->AddChild(camera_node);
+
+					float3 lookat, up;
+					std::tie(lookat, up) = CubeMapViewVector<float>(static_cast<Texture::CubeFaces>(i));
+
+					sm_cameras_[i]->LookAtDist(1);
+					camera_node->TransformToParent(MathLib::inverse(MathLib::look_at_lh(float3(0, 0, 0), lookat, up)));
+				}
+			}
+		}
+	}
+
 	void PointLightSource::MainThreadUpdate(float app_time, float elapsed_time)
 	{
 		SceneComponent::MainThreadUpdate(app_time, elapsed_time);
@@ -310,18 +349,6 @@ namespace KlayGE
 
 		for (uint32_t i = 0; i < 6; ++i)
 		{
-			float3 d, u;
-			std::tie(d, u) = CubeMapViewVector<float>(static_cast<Texture::CubeFaces>(i));
-
-			float3 scale;
-			Quaternion quat;
-			float3 pos;
-			MathLib::decompose(scale, quat, pos, this->BoundSceneNode()->TransformToWorld());
-
-			float3 lookat = MathLib::transform_quat(d, quat);
-			float3 up = MathLib::transform_quat(u, quat);
-
-			sm_cameras_[i]->ViewParams(pos, pos + lookat, up);
 			sm_cameras_[i]->ProjParams(PI / 2, 1, scene_camera.NearPlane(), scene_camera.FarPlane());
 		}
 	}
@@ -361,6 +388,36 @@ namespace KlayGE
 	{
 	}
 
+	void SpotLightSource::BindSceneNode(SceneNode* node)
+	{
+		{
+			auto* curr_node = this->BoundSceneNode();
+			if (curr_node != nullptr)
+			{
+				auto* curr_camera_node = sm_camera_->BoundSceneNode();
+				if (curr_camera_node != nullptr)
+				{
+					curr_node->RemoveChild(curr_camera_node);
+				}
+			}
+		}
+
+		SceneComponent::BindSceneNode(node);
+
+		{
+			if (node != nullptr)
+			{
+				auto camera_node = MakeSharedPtr<SceneNode>(
+					L"ShadowCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+				camera_node->AddComponent(sm_camera_);
+				node->AddChild(camera_node);
+
+				sm_camera_->LookAtDist(1);
+				camera_node->TransformToParent(MathLib::inverse(MathLib::look_at_lh(float3(0, 0, 0), float3(0, 0, 1), float3(0, 1, 0))));
+			}
+		}
+	}
+
 	void SpotLightSource::MainThreadUpdate(float app_time, float elapsed_time)
 	{
 		SceneComponent::MainThreadUpdate(app_time, elapsed_time);
@@ -373,16 +430,6 @@ namespace KlayGE
 
 	void SpotLightSource::UpdateCamera()
 	{
-		float3 scale;
-		Quaternion quat;
-		float3 pos;
-		MathLib::decompose(scale, quat, pos, this->BoundSceneNode()->TransformToWorld());
-
-		float3 lookat = MathLib::transform_quat(float3(0, 0, 1), quat);
-		float3 up = MathLib::transform_quat(float3(0, 1, 0), quat);
-
-		sm_camera_->ViewParams(pos, pos + lookat, up);
-
 		auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		auto const& scene_camera = *re.CurFrameBuffer()->GetViewport()->camera;
 		sm_camera_->ProjParams(cos_outer_inner_.z(), 1, scene_camera.NearPlane(), scene_camera.FarPlane());
@@ -447,6 +494,33 @@ namespace KlayGE
 	{
 	}
 
+	void DirectionalLightSource::BindSceneNode(SceneNode* node)
+	{
+		{
+			auto* curr_node = this->BoundSceneNode();
+			if (curr_node != nullptr)
+			{
+				auto* curr_camera_node = sm_camera_->BoundSceneNode();
+				if (curr_camera_node != nullptr)
+				{
+					curr_node->RemoveChild(curr_camera_node);
+				}
+			}
+		}
+
+		SceneComponent::BindSceneNode(node);
+
+		{
+			if (node != nullptr)
+			{
+				auto camera_node = MakeSharedPtr<SceneNode>(
+					L"ShadowCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+				camera_node->AddComponent(sm_camera_);
+				node->AddChild(camera_node);
+			}
+		}
+	}
+
 	void DirectionalLightSource::Attrib(int32_t attrib)
 	{
 		LightSource::Attrib(attrib);
@@ -493,7 +567,10 @@ namespace KlayGE
 
 		float3 const & center = aabb.Center();
 		float3 view_pos = MathLib::transform_coord(float3(center.x(), center.y(), aabb.Min().z()), MathLib::inverse(light_view));
-		sm_camera_->ViewParams(view_pos, view_pos + dir, up_vec);
+
+		sm_camera_->LookAtDist(1);
+		auto& camera_node = *sm_camera_->BoundSceneNode();
+		camera_node.TransformToWorld(MathLib::inverse(MathLib::look_at_lh(view_pos, view_pos + dir, up_vec)));
 
 		float3 dimensions = aabb.Max() - aabb.Min();
 		sm_camera_->ProjOrthoParams(dimensions.x(), dimensions.y(), 0.0f, dimensions.z());

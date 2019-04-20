@@ -226,11 +226,13 @@ void ScreenSpaceReflectionApp::OnCreate()
 	tb_controller_.AttachCamera(this->ActiveCamera());
 	tb_controller_.Scalers(0.003f, 0.05f);
 
+	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
+
 	screen_camera_path_ = LoadCameraPath(ResLoader::Instance().Open("Reflection.cam_path"));
 	screen_camera_path_->AttachCamera(this->ActiveCamera());
-	this->ActiveCamera().AddToSceneManager();
-
-	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
+	auto camera_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable);
+	camera_node->AddComponent(this->ActiveCamera().shared_from_this());
+	root_node.AddChild(camera_node);
 
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube_, c_cube_);
@@ -255,6 +257,11 @@ void ScreenSpaceReflectionApp::OnCreate()
 	root_node.AddChild(MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableComponent>(skybox_), SceneNode::SOA_NotCastShadow));
 
 	back_refl_fb_ = rf.MakeFrameBuffer();
+
+	auto back_refl_camera_node = MakeSharedPtr<SceneNode>(
+		L"BackReflectionCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	back_refl_camera_node->AddComponent(back_refl_fb_->GetViewport()->camera);
+	root_node.AddChild(back_refl_camera_node);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
@@ -428,7 +435,9 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 			float3 center = MathLib::transform_coord(teapot_mesh.PosBound().Center(), teapot_->TransformToWorld());
 			float3 direction = eye - at;
 
-			back_camera->ViewParams(center, center + direction, screen_camera_->UpVec());
+			back_camera->LookAtDist(MathLib::length(direction));
+			back_camera->BoundSceneNode()->TransformToWorld(
+				MathLib::inverse(MathLib::look_at_lh(center, center + direction, screen_camera_->UpVec())));
 			back_camera->ProjParams(PI / 2, 1, screen_camera_->NearPlane(), screen_camera_->FarPlane());
 
 			teapot_mesh.BackCamera(back_camera);

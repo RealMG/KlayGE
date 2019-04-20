@@ -34,7 +34,8 @@ private:
 
 	KlayGE::TrackballCameraController obj_controller_;
 	KlayGE::TrackballCameraController light_controller_;
-	KlayGE::Camera light_ctrl_camera_;
+	KlayGE::CameraPtr light_ctrl_camera_;
+	KlayGE::SceneNodePtr light_ctrl_camera_node_;
 
 	KlayGE::Color beta_;
 	KlayGE::Color absorb_;

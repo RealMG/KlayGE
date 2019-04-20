@@ -956,12 +956,12 @@ namespace KlayGE
 		light->Attrib(0);
 		light->Color(float3(1, 1, 1));
 		light->Falloff(float3(1, 0, 1));
-		light_node->AddComponent(light);
 
 		auto light_proxy = LoadLightSourceProxyModel(light);
 		auto light_proxy_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
 		light_proxy_node->AddChild(light_proxy->RootNode());
 		light_node->AddChild(light_proxy_node);
+		light_node->AddComponent(light);
 		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_node);
 
 		uint32_t const entity_id = last_entity_id_ + 1;
@@ -1014,12 +1014,12 @@ namespace KlayGE
 		auto camera_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
 
 		CameraPtr camera = MakeSharedPtr<Camera>();
-		camera->AddToSceneManager();
 
 		auto camera_proxy = LoadCameraProxyModel(camera);
 		auto camera_proxy_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
 		camera_proxy_node->AddChild(camera_proxy->RootNode());
 		camera_node->AddChild(camera_proxy_node);
+		camera_node->AddComponent(camera);
 		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(camera_node);
 
 		uint32_t const entity_id = last_entity_id_ + 1;
@@ -1054,7 +1054,6 @@ namespace KlayGE
 		{
 			if (ET_Camera == iter->second.type)
 			{
-				iter->second.camera->DelFromSceneManager();
 				Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(iter->second.scene_node);
 				entities_.erase(iter ++);
 			}
@@ -1076,23 +1075,6 @@ namespace KlayGE
 		if (iter != entities_.end())
 		{
 			Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(iter->second.scene_node);
-
-			switch (iter->second.type)
-			{
-			case ET_Model:
-				break;
-
-			case ET_Light:
-				break;
-
-			case ET_Camera:
-				iter->second.camera->DelFromSceneManager();
-				break;
-
-			default:
-				break;
-			}
-
 			entities_.erase(iter);
 		}
 
@@ -1293,8 +1275,9 @@ namespace KlayGE
 
 		case ET_Camera:
 			mat = this->CalcAdaptiveScaling(ei, 75, proxy_scaling);
-			ei.camera->ViewParams(ei.trf_pos, ei.trf_pos + MathLib::transform_normal(float3(0, 0, 1), mat),
-				MathLib::transform_normal(float3(0, 1, 0), mat));
+			ei.camera->LookAtDist(MathLib::length(MathLib::transform_normal(float3(0, 0, 1), mat)));
+			ei.camera->BoundSceneNode()->TransformToWorld(
+				MathLib::inverse(MathLib::look_at_lh(ei.trf_pos, ei.trf_pos + MathLib::transform_normal(float3(0, 0, 1), mat))));
 			ei.scene_node->Children()[0]->TransformToParent(MathLib::scaling(proxy_scaling * ei.trf_scale));
 			break;
 
@@ -2037,7 +2020,8 @@ namespace KlayGE
 						MemInputStreamBuf stream_buff(v.data(), v.size());
 						std::istream(&stream_buff) >> up.x() >> up.y() >> up.z();
 					}
-					camera->ViewParams(eye_pos, look_at, up);
+					camera->LookAtDist(MathLib::length(look_at - eye_pos));
+					camera->BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(eye_pos, look_at, up)));
 
 					float fov = PI / 4;
 					float aspect = 1;

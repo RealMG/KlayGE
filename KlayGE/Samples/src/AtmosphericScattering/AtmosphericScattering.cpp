@@ -189,8 +189,16 @@ void AtmosphericScatteringApp::OnCreate()
 	obj_controller_.AttachCamera(this->ActiveCamera());
 	obj_controller_.Scalers(0.003f, 0.003f);
 
-	light_ctrl_camera_.ViewParams(float3(-0.01f, 0, 0), float3(0, 0, 0), float3(0, -1, 0));
-	light_controller_.AttachCamera(light_ctrl_camera_);
+	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
+
+	light_ctrl_camera_node_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	root_node.AddChild(light_ctrl_camera_node_);
+	light_ctrl_camera_ = MakeSharedPtr<Camera>();
+	light_ctrl_camera_node_->AddComponent(light_ctrl_camera_);
+	light_ctrl_camera_->LookAtDist(0.01f);
+	light_ctrl_camera_node_->TransformToParent(
+		MathLib::inverse(MathLib::look_at_lh(float3(-0.01f, 0, 0), float3(0, 0, 0), float3(0, -1, 0))));
+	light_controller_.AttachCamera(*light_ctrl_camera_);
 	light_controller_.Scalers(0.003f, 0.003f);
 
 	planet_model_ = SyncLoadModel("geosphere.glb", EAH_GPU_Read | EAH_Immutable,
@@ -247,10 +255,10 @@ void AtmosphericScatteringApp::OnCreate()
 		KFL_UNUSED(app_time);
 		KFL_UNUSED(elapsed_time);
 
-		node.TransformToParent(light_ctrl_camera_.InverseViewMatrix());
+		node.TransformToParent(light_ctrl_camera_->InverseViewMatrix());
 	});
 	sun_light_node->AddComponent(sun_light);
-	Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(sun_light_node);
+	root_node.AddChild(sun_light_node);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
@@ -434,7 +442,7 @@ uint32_t AtmosphericScatteringApp::DoUpdate(KlayGE::uint32_t /*pass*/)
 {
 	RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 
-	float3 const dir = light_ctrl_camera_.ForwardVec();
+	float3 const dir = light_ctrl_camera_->ForwardVec();
 	planet_model_->ForEachMesh([&dir](Renderable& renderable)
 		{
 			checked_cast<PlanetMesh&>(renderable).LightDir(-dir);

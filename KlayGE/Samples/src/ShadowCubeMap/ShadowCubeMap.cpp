@@ -654,7 +654,10 @@ uint32_t ShadowCubeMap::DoUpdate(uint32_t pass)
 			{
 				float3 const pos = light_->Position();
 				float3 const lookat = light_->Position() + ((0 == pass) ? 1.0f : -1.0f) * light_->Direction();
-				shadow_dual_buffers_[pass]->GetViewport()->camera->ViewParams(pos, lookat);
+
+				auto& camera = *shadow_dual_buffers_[pass]->GetViewport()->camera;
+				camera.LookAtDist(MathLib::length(lookat - pos));
+				camera.BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(pos, lookat)));
 
 				renderEngine.BindFrameBuffer(shadow_dual_buffers_[pass]);
 				renderEngine.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(0.0f, 0.0f, 0.0f, 1), 1.0f, 0);
@@ -751,7 +754,12 @@ uint32_t ShadowCubeMap::DoUpdate(uint32_t pass)
 			{
 			case 0:
 				{
-					shadow_cube_one_buffer_->GetViewport()->camera->ViewParams(light_->Position(), light_->Position() + light_->Direction());
+					float3 const pos = light_->Position();
+					float3 const lookat = pos + light_->Direction();
+
+					auto& camera = *shadow_cube_one_buffer_->GetViewport()->camera;
+					camera.LookAtDist(MathLib::length(lookat - pos));
+					camera.BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(pos, lookat)));
 
 					renderEngine.BindFrameBuffer(shadow_cube_one_buffer_);
 					renderEngine.CurFrameBuffer()->Clear(FrameBuffer::CBM_Color | FrameBuffer::CBM_Depth, Color(0.0f, 0.0f, 0.0f, 1), 1.0f, 0);

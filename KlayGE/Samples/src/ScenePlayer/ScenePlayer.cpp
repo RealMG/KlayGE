@@ -206,8 +206,10 @@ namespace
 		{
 		}
 
-		void operator()(Camera& camera, float app_time, float elapsed_time)
+		void operator()(SceneComponent& component, float app_time, float elapsed_time)
 		{
+			Camera& camera = checked_cast<Camera&>(component);
+
 			std::any py_ret = this->Run(app_time, elapsed_time);
 			if (std::any_cast<std::vector<std::any>>(&py_ret) != nullptr)
 			{
@@ -284,7 +286,8 @@ namespace
 					}
 				}
 
-				camera.ViewParams(cam_eye, cam_lookat, cam_up);
+				camera.LookAtDist(MathLib::length(cam_lookat - cam_eye));
+				camera.BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(cam_eye, cam_lookat, cam_up)));
 				camera.ProjParams(cam_fov, cam_aspect, cam_np, cam_fp);
 			}
 		}
@@ -324,9 +327,14 @@ ScenePlayerApp::ScenePlayerApp()
 
 void ScenePlayerApp::LoadScene(std::string const & name)
 {
+	auto& main_camera = this->ActiveCamera();
+	auto backup_main_camera_node = main_camera.BoundSceneNode()->shared_from_this();
+
 	Context& context = Context::Instance();
 	SceneManager& sceneMgr(context.SceneManagerInstance());
 	sceneMgr.ClearObject();
+
+	sceneMgr.SceneRootNode().AddChild(backup_main_camera_node);
 
 	RenderFactory& rf = context.RenderFactoryInstance();
 
@@ -728,12 +736,12 @@ void ScenePlayerApp::LoadScene(std::string const & name)
 			}
 		}
 
-		auto& camera = this->ActiveCamera();
-		camera.ViewParams(eye_pos, look_at, up);
-		camera.ProjParams(fov, aspect, near_plane, far_plane);
+		main_camera.LookAtDist(MathLib::length(look_at - eye_pos));
+		main_camera.BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(eye_pos, look_at, up)));
+		main_camera.ProjParams(fov, aspect, near_plane, far_plane);
 		if (!update_script.empty())
 		{
-			camera.BindUpdateFunc(CameraUpdate(update_script));
+			main_camera.OnMainThreadUpdate().Connect(CameraUpdate(update_script));
 		}
 	}
 }

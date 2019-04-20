@@ -22,12 +22,13 @@
 #include <KFL/Frustum.hpp>
 #include <KFL/Vector.hpp>
 #include <KFL/Matrix.hpp>
+#include <KlayGE/SceneComponent.hpp>
 
 namespace KlayGE
 {
 	// 3DÉãÏñ»ú²Ù×÷
 	//////////////////////////////////////////////////////////////////////////////////
-	class KLAYGE_CORE_API Camera : boost::noncopyable, public std::enable_shared_from_this<Camera>
+	class KLAYGE_CORE_API Camera : public SceneComponent, public std::enable_shared_from_this<Camera>
 	{
 	public:
 		Camera();
@@ -55,29 +56,22 @@ namespace KlayGE
 		float FarPlane() const
 			{ return far_plane_; }
 
-		void ViewParams(float3 const & eye_pos, float3 const & look_at);
-		void ViewParams(float3 const & eye_pos, float3 const & look_at, float3 const & up_vec);
 		void ProjParams(float fov, float aspect, float near_plane, float far_plane);
 		void ProjOrthoParams(float w, float h, float near_plane, float far_plane);
 		void ProjOrthoOffCenterParams(float left, float top, float right, float bottom, float near_plane, float far_plane);
 
-		void BindUpdateFunc(std::function<void(Camera&, float, float)> const & update_func);
-
-		void Update(float app_time, float elapsed_time);
-
-		void AddToSceneManager();
-		void DelFromSceneManager();
+		void MainThreadUpdate(float app_time, float elapsed_time) override;
 
 		float4x4 const & ViewMatrix() const;
 		float4x4 const & ProjMatrix() const;
 		float4x4 const & ProjMatrixWOAdjust() const;
-		float4x4 const & ViewProjMatrix() const;
-		float4x4 const & ViewProjMatrixWOAdjust() const;
+		float4x4 ViewProjMatrix() const;
+		float4x4 ViewProjMatrixWOAdjust() const;
 		float4x4 const & InverseViewMatrix() const;
 		float4x4 const & InverseProjMatrix() const;
 		float4x4 const & InverseProjMatrixWOAdjust() const;
-		float4x4 const & InverseViewProjMatrix() const;
-		float4x4 const & InverseViewProjMatrixWOAdjust() const;
+		float4x4 InverseViewProjMatrix() const;
+		float4x4 InverseViewProjMatrixWOAdjust() const;
 		float4x4 const & PrevViewMatrix() const;
 		float4x4 const & PrevProjMatrix() const;
 		float4 NearQFarParam() const;
@@ -90,9 +84,7 @@ namespace KlayGE
 		void JitterMode(bool jitter);
 
 	private:
-		float		look_at_dist_;
-		float4x4	view_mat_;
-		float4x4	inv_view_mat_;
+		float		look_at_dist_ = 1;
 
 		float		fov_;
 		float		aspect_;
@@ -106,20 +98,10 @@ namespace KlayGE
 		float4x4 prev_view_mat_;
 		float4x4 prev_proj_mat_;
 
-		mutable float4x4	view_proj_mat_;
-		mutable float4x4	inv_view_proj_mat_;
-		mutable bool		view_proj_mat_dirty_ = true;
-		mutable float4x4	view_proj_mat_wo_adjust_;
-		mutable float4x4	inv_view_proj_mat_wo_adjust_;
-		mutable bool		view_proj_mat_wo_adjust_dirty_ = true;
-
 		mutable Frustum	frustum_;
-		mutable bool	frustum_dirty_ = true;
 
 		uint32_t	mode_ = 0;
 		int cur_jitter_index_ = 0;
-
-		std::function<void(Camera&, float, float)> update_func_;
 	};
 }
 
