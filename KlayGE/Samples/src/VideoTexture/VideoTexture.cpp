@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -13,7 +12,7 @@
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/Show.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Camera.hpp>
@@ -22,8 +21,9 @@
 #include <KlayGE/InputFactory.hpp>
 #include <KlayGE/ShowFactory.hpp>
 
-#include <vector>
+#include <iterator>
 #include <sstream>
+#include <vector>
 
 #include "SampleCommon.hpp"
 #include "VideoTexture.hpp"
@@ -43,21 +43,10 @@ namespace
 			technique_ = effect_->TechniqueByName("Object");
 		}
 
-		void DoBuildMeshInfo(RenderModel const & model) override
-		{
-			KFL_UNUSED(model);
-
-			AABBox const & pos_bb = this->PosBound();
-			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
-			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
-
-			AABBox const & tc_bb = this->TexcoordBound();
-			*(effect_->ParameterByName("tc_center")) = float2(tc_bb.Center().x(), tc_bb.Center().y());
-			*(effect_->ParameterByName("tc_extent")) = float2(tc_bb.HalfSize().x(), tc_bb.HalfSize().y());
-		}
-
 		void OnRenderBegin()
 		{
+			StaticMesh::OnRenderBegin();
+
 			App3DFramework const & app = Context::Instance().AppInstance();
 			Camera const & camera = app.ActiveCamera();
 
@@ -130,12 +119,15 @@ void VideoTextureApp::OnCreate()
 	light_->Attrib(0);
 	light_->Color(float3(2, 2, 2));
 	light_->Falloff(float3(1, 0, 1.0f));
-	light_->Position(float3(0.25f, 0.5f, -1.0f));
-	light_->AddToSceneManager();
 
-	light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-	light_proxy_->Scaling(0.01f, 0.01f, 0.01f);
-	root_node.AddChild(light_proxy_->RootNode());
+	auto light_proxy = LoadLightSourceProxyModel(light_);
+	light_proxy->RootNode()->TransformToParent(MathLib::scaling(0.01f, 0.01f, 0.01f) * light_proxy->RootNode()->TransformToParent());
+
+	auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	light_node->TransformToParent(MathLib::translation(0.25f, 0.5f, -1.0f));
+	light_node->AddComponent(light_);
+	light_node->AddChild(light_proxy->RootNode());
+	root_node.AddChild(light_node);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
@@ -159,7 +151,7 @@ void VideoTextureApp::OnCreate()
 	se.Load(ResLoader::Instance().Locate("big_buck_bunny.avi"));
 	se.Play();
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("VideoTexture.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("VideoTexture.uiml"));
 }
 
 void VideoTextureApp::OnResize(uint32_t width, uint32_t height)

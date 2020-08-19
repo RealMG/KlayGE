@@ -16,7 +16,7 @@
 #pragma once
 
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 
 namespace KlayGE
 {
@@ -30,18 +30,19 @@ namespace KlayGE
 		void OnRenderBegin();
 	};
 
-	class KLAYGE_CORE_API LensFlareSceneObject : public SceneNode
+	class KLAYGE_CORE_API LensFlareRenderableComponent : public RenderableComponent
 	{
 	public:
-		LensFlareSceneObject();
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winconsistent-missing-override"
+#endif
+		BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS((RenderableComponent))
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic pop
+#endif
 
-		void Direction(float3 const & dir);
-		float3 const & Direction() const;
-
-		void MainThreadUpdateFunc();
-
-	private:
-		float3 dir_;
+		LensFlareRenderableComponent();
 	};
 }
 

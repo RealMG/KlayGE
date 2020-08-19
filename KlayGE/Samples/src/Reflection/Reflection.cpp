@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -9,7 +8,7 @@
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/SceneManager.hpp>
 #include <KlayGE/SceneNode.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/Mesh.hpp>
@@ -21,6 +20,7 @@
 
 #include <KlayGE/SSRPostProcess.hpp>
 
+#include <iterator>
 #include <sstream>
 
 #include "SampleCommon.hpp"
@@ -49,11 +49,21 @@ namespace
 			this->BindDeferredEffect(SyncLoadRenderEffect("Reflection.fxml"));
 			technique_ = special_shading_tech_;
 
-			reflection_tech_ = effect_->TechniqueByName("ReflectReflectionTech");
+			auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
+			if (re.DeviceCaps().vp_rt_index_at_every_stage_support)
+			{
+				reflection_tech_ = effect_->TechniqueByName("ReflectReflectionTech");
+				special_shading_tech_ = effect_->TechniqueByName("ReflectSpecialShadingTech");
+			}
+			else
+			{
+				reflection_tech_ = effect_->TechniqueByName("ReflectReflectionNoVpRtTech");
+				special_shading_tech_ = effect_->TechniqueByName("ReflectSpecialShadingNoVpRtTech");
+			}
+
 			reflection_alpha_blend_back_tech_ = reflection_tech_;
 			reflection_alpha_blend_front_tech_ = reflection_tech_;
 
-			special_shading_tech_ = effect_->TechniqueByName("ReflectSpecialShadingTech");
 			special_shading_alpha_blend_back_tech_ = special_shading_tech_;
 			special_shading_alpha_blend_front_tech_ = special_shading_tech_;
 
@@ -226,23 +236,28 @@ void ScreenSpaceReflectionApp::OnCreate()
 	tb_controller_.AttachCamera(this->ActiveCamera());
 	tb_controller_.Scalers(0.003f, 0.05f);
 
-	screen_camera_path_ = LoadCameraPath(ResLoader::Instance().Open("Reflection.cam_path"));
-	screen_camera_path_->AttachCamera(this->ActiveCamera());
-	this->ActiveCamera().AddToSceneManager();
-
 	auto& root_node = Context::Instance().SceneManagerInstance().SceneRootNode();
+
+	screen_camera_path_ = LoadCameraPath(*ResLoader::Instance().Open("Reflection.cam_path"));
+	screen_camera_path_->AttachCamera(this->ActiveCamera());
+	auto camera_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable);
+	camera_node->AddComponent(this->ActiveCamera().shared_from_this());
+	root_node.AddChild(camera_node);
 
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube_, c_cube_);
 	ambient_light->Color(float3(0.1f, 0.1f, 0.1f));
-	ambient_light->AddToSceneManager();
+	root_node.AddComponent(ambient_light);
 
-	point_light_ = MakeSharedPtr<PointLightSource>();
-	point_light_->Attrib(LightSource::LSA_NoShadow);
-	point_light_->Color(float3(1, 1, 1));
-	point_light_->Position(float3(0, 3, -2));
-	point_light_->Falloff(float3(1, 0, 0.3f));
-	point_light_->AddToSceneManager();
+	auto point_light = MakeSharedPtr<PointLightSource>();
+	point_light->Attrib(LightSource::LSA_NoShadow);
+	point_light->Color(float3(1, 1, 1));
+	point_light->Falloff(float3(1, 0, 0.3f));
+
+	auto point_light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	point_light_node->TransformToParent(MathLib::translation(0.0f, 3.0f, -2.0f));
+	point_light_node->AddComponent(point_light);
+	root_node.AddChild(point_light_node);
 
 	deferred_rendering_ = Context::Instance().DeferredRenderingLayerInstance();
 
@@ -252,6 +267,11 @@ void ScreenSpaceReflectionApp::OnCreate()
 	root_node.AddChild(MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableComponent>(skybox_), SceneNode::SOA_NotCastShadow));
 
 	back_refl_fb_ = rf.MakeFrameBuffer();
+
+	auto back_refl_camera_node = MakeSharedPtr<SceneNode>(
+		L"BackReflectionCameraNode", SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+	back_refl_camera_node->AddComponent(back_refl_fb_->Viewport()->Camera());
+	root_node.AddChild(back_refl_camera_node);
 
 	InputEngine& inputEngine(Context::Instance().InputFactoryInstance().InputEngineInstance());
 	InputActionMap actionMap;
@@ -265,7 +285,7 @@ void ScreenSpaceReflectionApp::OnCreate()
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("Reflection.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("Reflection.uiml"));
 	parameter_dialog_ = UIManager::Instance().GetDialog("Reflection");
 
 	id_min_sample_num_static_ = parameter_dialog_->IDFromName("min_sample_num_static");
@@ -315,7 +335,7 @@ void ScreenSpaceReflectionApp::OnResize(KlayGE::uint32_t width, KlayGE::uint32_t
 
 	deferred_rendering_->SetupViewport(0, back_refl_fb_, VPAM_NoTransparencyBack | VPAM_NoTransparencyFront | VPAM_NoSimpleForward | VPAM_NoGI | VPAM_NoSSVO);
 
-	screen_camera_ = re.CurFrameBuffer()->GetViewport()->camera;
+	screen_camera_ = re.CurFrameBuffer()->Viewport()->Camera();
 }
 
 void ScreenSpaceReflectionApp::InputHandler(KlayGE::InputEngine const & /*sender*/, KlayGE::InputAction const & action)
@@ -373,6 +393,14 @@ void ScreenSpaceReflectionApp::DoUpdateOverlay()
 	stream.precision(2);
 	stream << std::fixed << this->FPS() << " FPS";
 	font_->RenderText(0, 18, Color(1, 1, 0, 1), stream.str(), 16);
+
+	uint32_t const num_loading_res = ResLoader::Instance().NumLoadingResources();
+	if (num_loading_res > 0)
+	{
+		stream.str(L"");
+		stream << "Loading " << num_loading_res << " resources...";
+		font_->RenderText(100, 300, Color(1, 0, 0, 1), stream.str(), 48);
+	}
 }
 
 uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
@@ -415,7 +443,7 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 		}
 		else
 		{
-			CameraPtr const & back_camera = back_refl_fb_->GetViewport()->camera;
+			CameraPtr const& back_camera = back_refl_fb_->Viewport()->Camera();
 
 			float3 eye = screen_camera_->EyePos();
 			float3 at = screen_camera_->LookAt();
@@ -425,7 +453,9 @@ uint32_t ScreenSpaceReflectionApp::DoUpdate(KlayGE::uint32_t pass)
 			float3 center = MathLib::transform_coord(teapot_mesh.PosBound().Center(), teapot_->TransformToWorld());
 			float3 direction = eye - at;
 
-			back_camera->ViewParams(center, center + direction, screen_camera_->UpVec());
+			back_camera->LookAtDist(MathLib::length(direction));
+			back_camera->BoundSceneNode()->TransformToWorld(
+				MathLib::inverse(MathLib::look_at_lh(center, center + direction, screen_camera_->UpVec())));
 			back_camera->ProjParams(PI / 2, 1, screen_camera_->NearPlane(), screen_camera_->FarPlane());
 
 			teapot_mesh.BackCamera(back_camera);

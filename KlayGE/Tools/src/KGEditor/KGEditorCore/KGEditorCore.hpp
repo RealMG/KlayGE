@@ -8,7 +8,7 @@
 #include <KlayGE/Font.hpp>
 #include <KlayGE/CameraController.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 
 #include "PreDeclare.hpp"
 #include "Common.hpp"
@@ -50,8 +50,6 @@ namespace KlayGE
 			float3 trf_scale;
 			Quaternion trf_rotate;
 			SceneNodePtr scene_node;
-			SceneObjectLightSourceProxyPtr light_proxy;
-			SceneObjectCameraProxyPtr camera_proxy;
 		};
 
 	private:

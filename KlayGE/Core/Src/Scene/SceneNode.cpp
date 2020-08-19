@@ -48,6 +48,8 @@ namespace KlayGE
 			pos_aabb_os_ = MakeUniquePtr<AABBox>();
 			pos_aabb_ws_ = MakeUniquePtr<AABBox>();
 		}
+
+		this->FillVisibleMark(BoundOverlap::No);
 	}
 
 	SceneNode::SceneNode(std::wstring_view name, uint32_t attrib)
@@ -103,7 +105,7 @@ namespace KlayGE
 		}
 		else
 		{
-			for (auto const & child : children_)
+			for (auto const& child : children_)
 			{
 				ret = child->FindFirstNode(name);
 				if (ret != nullptr)
@@ -136,7 +138,7 @@ namespace KlayGE
 			});
 	}
 
-	bool SceneNode::IsNodeInSubTree(SceneNode const * node)
+	bool SceneNode::IsNodeInSubTree(SceneNode const* node)
 	{
 		if (node == this)
 		{
@@ -162,12 +164,12 @@ namespace KlayGE
 		updated_ = false;
 	}
 
-	std::vector<SceneNodePtr> const & SceneNode::Children() const
+	std::vector<SceneNodePtr> const& SceneNode::Children() const
 	{
 		return children_;
 	}
 
-	void SceneNode::AddChild(SceneNodePtr const & node)
+	void SceneNode::AddChild(SceneNodePtr const& node)
 	{
 		auto iter = std::find(children_.begin(), children_.end(), node);
 		if (iter == children_.end())
@@ -178,7 +180,7 @@ namespace KlayGE
 		}
 	}
 
-	void SceneNode::RemoveChild(SceneNodePtr const & node)
+	void SceneNode::RemoveChild(SceneNodePtr const& node)
 	{
 		this->RemoveChild(node.get());
 	}
@@ -198,7 +200,7 @@ namespace KlayGE
 
 	void SceneNode::ClearChildren()
 	{
-		for (auto const & child : children_)
+		for (auto const& child : children_)
 		{
 			child->Parent(nullptr);
 		}
@@ -209,11 +211,11 @@ namespace KlayGE
 		this->EmitSceneChanged();
 	}
 
-	void SceneNode::Traverse(std::function<bool(SceneNode&)> const & callback)
+	void SceneNode::Traverse(std::function<bool(SceneNode&)> const& callback)
 	{
 		if (callback(*this))
 		{
-			for (auto const & child : children_)
+			for (auto const& child : children_)
 			{
 				child->Traverse(callback);
 			}
@@ -283,7 +285,27 @@ namespace KlayGE
 		pos_aabb_dirty_ = true;
 	}
 
-	void SceneNode::ForEachComponent(std::function<void(SceneComponent&)> const & callback) const
+	void SceneNode::ReplaceComponent(uint32_t index, SceneComponentPtr const& component)
+	{
+		BOOST_ASSERT(component);
+
+		auto* curr_node = component->BoundSceneNode();
+		if (curr_node != nullptr)
+		{
+			curr_node->RemoveComponent(component);
+		}
+
+		if (components_[index] != nullptr)
+		{
+			components_[index]->BindSceneNode(nullptr);
+		}
+
+		component->BindSceneNode(this);
+		components_[index] = component;
+		pos_aabb_dirty_ = true;
+	}
+
+	void SceneNode::ForEachComponent(std::function<void(SceneComponent&)> const& callback) const
 	{
 		for (auto const& component : components_)
 		{
@@ -328,28 +350,47 @@ namespace KlayGE
 
 	float4x4 const& SceneNode::TransformToWorld() const
 	{
-		auto& scene_mgr = Context::Instance().SceneManagerInstance();
-		if (!scene_mgr.NodesUpdated())
+		if (parent_ == nullptr)
 		{
-			auto* parent = this->Parent();
-			xform_to_world_ = xform_to_parent_;
-			while (parent != nullptr)
-			{
-				xform_to_world_ *= parent->TransformToParent();
-				parent = parent->Parent();
-			}
+			return xform_to_parent_;
 		}
-		return xform_to_world_;
+		else
+		{
+			auto& scene_mgr = Context::Instance().SceneManagerInstance();
+			if (!scene_mgr.NodesUpdated())
+			{
+				auto* parent = this->Parent();
+				xform_to_world_ = xform_to_parent_;
+				while (parent != nullptr)
+				{
+					xform_to_world_ *= parent->TransformToParent();
+					parent = parent->Parent();
+				}
+			}
+			return xform_to_world_;
+		}
+	}
+
+	float4x4 const& SceneNode::PrevTransformToWorld() const
+	{
+		return prev_xform_to_world_;
 	}
 
 	float4x4 const& SceneNode::InverseTransformToWorld() const
 	{
-		auto& scene_mgr = Context::Instance().SceneManagerInstance();
-		if (!scene_mgr.NodesUpdated())
+		if (parent_ == nullptr)
 		{
-			inv_xform_to_world_ = MathLib::inverse(this->TransformToWorld());
+			return inv_xform_to_parent_;
 		}
-		return inv_xform_to_world_;
+		else
+		{
+			auto& scene_mgr = Context::Instance().SceneManagerInstance();
+			if (!scene_mgr.NodesUpdated())
+			{
+				inv_xform_to_world_ = MathLib::inverse(this->TransformToWorld());
+			}
+			return inv_xform_to_world_;
+		}
 	}
 
 	AABBox const& SceneNode::PosBoundOS() const
@@ -364,6 +405,7 @@ namespace KlayGE
 
 	void SceneNode::UpdateTransforms()
 	{
+		prev_xform_to_world_ = xform_to_world_;
 		if (parent_)
 		{
 			xform_to_world_ = xform_to_parent_ * parent_->TransformToWorld();
@@ -382,14 +424,21 @@ namespace KlayGE
 		return updated_ && !pos_aabb_dirty_;
 	}
 
-	void SceneNode::VisibleMark(BoundOverlap vm)
+	void SceneNode::FillVisibleMark(BoundOverlap vm)
 	{
-		visible_mark_ = vm;
+		visible_marks_.fill(vm);
 	}
 
-	BoundOverlap SceneNode::VisibleMark() const
+	void SceneNode::VisibleMark(uint32_t camera_index, BoundOverlap vm)
 	{
-		return visible_mark_;
+		BOOST_ASSERT(camera_index < visible_marks_.size());
+		visible_marks_[camera_index] = vm;
+	}
+
+	BoundOverlap SceneNode::VisibleMark(uint32_t camera_index) const
+	{
+		BOOST_ASSERT(camera_index < visible_marks_.size());
+		return visible_marks_[camera_index];
 	}
 
 	void SceneNode::SubThreadUpdate(float app_time, float elapsed_time)
@@ -446,14 +495,24 @@ namespace KlayGE
 		}
 	}
 
+	std::vector<VertexElement>& SceneNode::InstanceFormat()
+	{
+		return instance_format_;
+	}
+
 	std::vector<VertexElement> const & SceneNode::InstanceFormat() const
 	{
 		return instance_format_;
 	}
 
+	void SceneNode::InstanceData(void* data)
+	{
+		instance_data_ = data;
+	}
+
 	void const * SceneNode::InstanceData() const
 	{
-		return nullptr;
+		return instance_data_;
 	}
 
 	void SceneNode::SelectMode(bool select_mode)
@@ -598,8 +657,8 @@ namespace KlayGE
 					if (child->pos_aabb_os_)
 					{
 						if ((child->pos_aabb_os_->Min().x() < child->pos_aabb_os_->Max().x())
-							&& (child->pos_aabb_os_->Min().y() < child->pos_aabb_os_->Max().y())
-							&& (child->pos_aabb_os_->Min().z() < child->pos_aabb_os_->Max().z()))
+							|| (child->pos_aabb_os_->Min().y() < child->pos_aabb_os_->Max().y())
+							|| (child->pos_aabb_os_->Min().z() < child->pos_aabb_os_->Max().z()))
 						{
 							*pos_aabb_os_ |= MathLib::transform_aabb(*child->pos_aabb_os_, child->TransformToParent());
 						}

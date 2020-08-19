@@ -59,7 +59,7 @@ namespace KlayGE
 		bool location_sensor;
 	};
 
-	class KLAYGE_CORE_API Context : boost::noncopyable
+	class KLAYGE_CORE_API Context final : boost::noncopyable
 	{
 	public:
 		Context();
@@ -74,6 +74,11 @@ namespace KlayGE
 		android_app* AppState() const
 		{
 			return state_;
+		}
+
+		void AppState(android_app* state)
+		{
+			state_ = state;
 		}
 #endif
 

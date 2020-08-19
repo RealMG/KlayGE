@@ -35,7 +35,7 @@
 
 #include <KlayGE/PreDeclare.hpp>
 #include <KFL/Math.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 
 #include <mutex>
 #include <random>
@@ -58,10 +58,8 @@ namespace KlayGE
 	class KLAYGE_CORE_API ParticleEmitter
 	{
 	public:
-		explicit ParticleEmitter(SceneNodePtr const & ps);
-		virtual ~ParticleEmitter()
-		{
-		}
+		explicit ParticleEmitter(ParticleSystemPtr const& ps);
+		virtual ~ParticleEmitter() noexcept;
 
 		virtual std::string const & Type() const = 0;
 		virtual ParticleEmitterPtr Clone() = 0;
@@ -207,10 +205,8 @@ namespace KlayGE
 	class KLAYGE_CORE_API ParticleUpdater
 	{
 	public:
-		explicit ParticleUpdater(SceneNodePtr const & ps);
-		virtual ~ParticleUpdater()
-		{
-		}
+		explicit ParticleUpdater(ParticleSystemPtr const& ps);
+		virtual ~ParticleUpdater() noexcept;
 
 		virtual std::string const & Type() const = 0;
 		virtual ParticleUpdaterPtr Clone() = 0;
@@ -225,12 +221,17 @@ namespace KlayGE
 		std::weak_ptr<ParticleSystem> ps_;
 	};
 
-	class KLAYGE_CORE_API ParticleSystem : public SceneNode
+	class KLAYGE_CORE_API ParticleSystem final : public std::enable_shared_from_this<ParticleSystem>
 	{
 	public:
 		explicit ParticleSystem(uint32_t max_num_particles, bool sort_particles = false);
 
-		virtual ParticleSystemPtr Clone();
+		ParticleSystemPtr Clone();
+
+		SceneNodePtr const& RootNode() const
+		{
+			return root_node_;
+		}
 
 		void Gravity(float gravity)
 		{
@@ -286,9 +287,6 @@ namespace KlayGE
 			return updaters_[index];
 		}
 
-		void SubThreadUpdateFunc(float elapsed_time);
-		void MainThreadUpdateFunc();
-
 		uint32_t NumParticles() const
 		{
 			return static_cast<uint32_t>(particles_.size());
@@ -334,7 +332,10 @@ namespace KlayGE
 		void UpdateParticlesNoLock(float elapsed_time);
 		void UpdateParticleBufferNoLock();
 
-	protected:
+	private:
+		SceneNodePtr root_node_;
+		RenderablePtr render_particles_;
+
 		std::vector<ParticleEmitterPtr> emitters_;
 		std::vector<ParticleUpdaterPtr> updaters_;
 
@@ -362,10 +363,10 @@ namespace KlayGE
 	KLAYGE_CORE_API void SaveParticleSystem(ParticleSystemPtr const & ps, std::string const & psml_name);
 
 
-	class KLAYGE_CORE_API PointParticleEmitter : public ParticleEmitter
+	class KLAYGE_CORE_API PointParticleEmitter final : public ParticleEmitter
 	{
 	public:
-		explicit PointParticleEmitter(SceneNodePtr const & ps);
+		explicit PointParticleEmitter(ParticleSystemPtr const& ps);
 
 		virtual std::string const & Type() const override;
 		virtual ParticleEmitterPtr Clone() override;
@@ -380,10 +381,10 @@ namespace KlayGE
 		std::uniform_int_distribution<> random_dis_;
 	};
 
-	class KLAYGE_CORE_API PolylineParticleUpdater : public ParticleUpdater
+	class KLAYGE_CORE_API PolylineParticleUpdater final : public ParticleUpdater
 	{
 	public:
-		explicit PolylineParticleUpdater(SceneNodePtr const & ps);
+		explicit PolylineParticleUpdater(ParticleSystemPtr const& ps);
 
 		virtual std::string const & Type() const override;
 		virtual ParticleUpdaterPtr Clone() override;

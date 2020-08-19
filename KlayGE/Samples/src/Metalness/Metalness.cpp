@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -14,7 +13,7 @@
 #include <KlayGE/Texture.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/SkyBox.hpp>
 #include <KlayGE/Camera.hpp>
 #include <KlayGE/UI.hpp>
@@ -25,8 +24,9 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/InputFactory.hpp>
 
-#include <vector>
+#include <iterator>
 #include <sstream>
+#include <vector>
 
 #include "SampleCommon.hpp"
 #include "Metalness.hpp"
@@ -45,34 +45,18 @@ namespace
 			effect_ = SyncLoadRenderEffect("Metalness.fxml");
 			technique_ = effect_->TechniqueByName("PBFittingPrefiltered");
 
-			SceneManager& sm = Context::Instance().SceneManagerInstance();
-			for (uint32_t i = 0; i < sm.NumLights(); ++ i)
 			{
-				LightSource const& light = *sm.GetLight(i);
-				if (LightSource::LT_Ambient == light.Type())
-				{
-					*(effect_->ParameterByName("skybox_Ycube_tex")) = light.SkylightTexY();
-					*(effect_->ParameterByName("skybox_Ccube_tex")) = light.SkylightTexC();
+				auto* ambient_light = Context::Instance().SceneManagerInstance().SceneRootNode().FirstComponentOfType<AmbientLightSource>();
 
-					uint32_t const mip = light.SkylightTexY()->NumMipMaps();
-					*(effect_->ParameterByName("diff_spec_mip")) = int2(mip - 1, mip - 2);
-					break;
-				}
+				*(effect_->ParameterByName("skybox_Ycube_tex")) = ambient_light->SkylightTexY();
+				*(effect_->ParameterByName("skybox_Ccube_tex")) = ambient_light->SkylightTexC();
+
+				uint32_t const mip = ambient_light->SkylightTexY()->NumMipMaps();
+				*(effect_->ParameterByName("diff_spec_mip")) = int2(mip - 1, mip - 2);
 			}
 		}
 
-		void DoBuildMeshInfo(RenderModel const & model) override
-		{
-			KFL_UNUSED(model);
-
-			AABBox const & pos_bb = this->PosBound();
-			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
-			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
-
-			AABBox const & tc_bb = this->TexcoordBound();
-			*(effect_->ParameterByName("tc_center")) = float2(tc_bb.Center().x(), tc_bb.Center().y());
-			*(effect_->ParameterByName("tc_extent")) = float2(tc_bb.HalfSize().x(), tc_bb.HalfSize().y());
-		}
+		using StaticMesh::Material;
 
 		void Material(float3 const & albedo, float metalness, float glossiness)
 		{
@@ -83,6 +67,8 @@ namespace
 
 		void OnRenderBegin()
 		{
+			StaticMesh::OnRenderBegin();
+
 			App3DFramework const & app = Context::Instance().AppInstance();
 			Camera const & camera = app.ActiveCamera();
 
@@ -136,7 +122,7 @@ void MetalnessApp::OnCreate()
 
 	AmbientLightSourcePtr ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube_map, c_cube_map);
-	ambient_light->AddToSceneManager();
+	root_node.AddComponent(ambient_light);
 
 	sphere_group_ = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
 	root_node.AddChild(sphere_group_);
@@ -147,7 +133,7 @@ void MetalnessApp::OnCreate()
 			KFL_UNUSED(elapsed_time);
 
 			auto& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
-			auto const & camera = *re.CurFrameBuffer()->GetViewport()->camera;
+			auto const& camera = *re.CurFrameBuffer()->Viewport()->Camera();
 
 			node.TransformToParent(camera.InverseViewMatrix());
 		});
@@ -207,7 +193,7 @@ void MetalnessApp::OnCreate()
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("Metalness.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("Metalness.uiml"));
 
 	dialog_ = UIManager::Instance().GetDialog("Parameters");
 	id_single_object_ = dialog_->IDFromName("SingleObject");

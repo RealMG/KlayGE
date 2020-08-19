@@ -20,7 +20,6 @@
 #include <array>
 
 #include <KlayGE/RenderableHelper.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
 
 namespace KlayGE
 {
@@ -28,7 +27,6 @@ namespace KlayGE
 	{
 	public:
 		InfTerrainRenderable(std::wstring_view name, uint32_t num_grids = 256, float stride = 1, float increate_rate = 1.012f);
-		virtual ~InfTerrainRenderable();
 
 		float2 const & XDir() const
 		{
@@ -50,10 +48,19 @@ namespace KlayGE
 		float2 x_dir_, y_dir_;
 	};
 
-	class KLAYGE_CORE_API InfTerrainSceneObject : public SceneNode
+	class KLAYGE_CORE_API InfTerrainRenderableComponent : public RenderableComponent
 	{
 	public:
-		InfTerrainSceneObject();
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winconsistent-missing-override"
+#endif
+		BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS((RenderableComponent))
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic pop
+#endif
+
+		InfTerrainRenderableComponent(RenderablePtr const& renderable);
 
 	protected:
 		float base_level_;
@@ -63,10 +70,12 @@ namespace KlayGE
 
 	class KLAYGE_CORE_API HQTerrainRenderable : public Renderable
 	{
-		friend class HQTerrainSceneObject;
+		friend class HQTerrainRenderableComponent;
 
 	private:
+#ifdef KLAYGE_HAS_STRUCT_PACK
 #pragma pack(push, 1)
+#endif
 		struct Adjacency
 		{
 			float neighbor_minus_x;
@@ -74,13 +83,17 @@ namespace KlayGE
 			float neighbor_plus_x;
 			float neighbor_plus_y;
 		};
+		KLAYGE_STATIC_ASSERT(sizeof(Adjacency) == 16);
 
 		struct InstanceData
 		{
 			float x, y;
 			Adjacency adjacency;
 		};
+		KLAYGE_STATIC_ASSERT(sizeof(InstanceData) == 24);
+#ifdef KLAYGE_HAS_STRUCT_PACK
 #pragma pack(pop)
+#endif
 
 		//----------------------------------------------------------------------------------
 		// Defines and draws one ring of tiles in a concentric, nested set of rings. Each ring
@@ -158,9 +171,6 @@ namespace KlayGE
 	public:
 		explicit HQTerrainRenderable(RenderEffectPtr const & effect,
 			float world_scale = 800, float vertical_scale = 2.5f, int world_uv_repeats = 8);
-		virtual ~HQTerrainRenderable()
-		{
-		}
 
 		virtual void Render() override;
 
@@ -206,15 +216,15 @@ namespace KlayGE
 
 		float snap_grid_size_;
 		float snapped_x_, snapped_z_;
-		std::vector<std::shared_ptr<TileRing>> tile_rings_;
+		std::vector<std::unique_ptr<TileRing>> tile_rings_;
 
 		float3 texture_world_offset_;
 
-		RenderTechnique* terrain_gbuffer_mrt_techs_[4];
+		RenderTechnique* terrain_gbuffer_techs_[4];
 		RenderEffectParameter* height_map_param_;
 		RenderEffectParameter* gradient_map_param_;
 		RenderEffectParameter* mask_map_param_;
-		RenderEffectParameter* eye_pos_param_;
+		RenderEffectParameter* culling_eye_pos_param_;
 		RenderEffectParameter* view_dir_param_;
 		RenderEffectParameter* proj_mat_param_;
 		RenderEffectParameter* texture_world_offset_param_;
@@ -233,17 +243,32 @@ namespace KlayGE
 		GraphicsBufferPtr tile_non_tess_vid_vb_;
 		GraphicsBufferPtr tile_tess_ib_;
 		TexturePtr height_map_tex_;
+		ShaderResourceViewPtr height_map_srv_;
+		RenderTargetViewPtr height_map_rtv_;
 		TexturePtr gradient_map_tex_;
+		ShaderResourceViewPtr gradient_map_srv_;
+		RenderTargetViewPtr gradient_map_rtv_;
 		TexturePtr mask_map_tex_;
+		ShaderResourceViewPtr mask_map_srv_;
+		RenderTargetViewPtr mask_map_rtv_;
 		TexturePtr height_map_cpu_tex_;
 		TexturePtr gradient_map_cpu_tex_;
 		TexturePtr mask_map_cpu_tex_;
 	};
 
-	class KLAYGE_CORE_API HQTerrainSceneObject : public SceneNode
+	class KLAYGE_CORE_API HQTerrainRenderableComponent : public RenderableComponent
 	{
 	public:
-		explicit HQTerrainSceneObject(RenderablePtr const & renderable);
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winconsistent-missing-override"
+#endif
+		BOOST_TYPE_INDEX_REGISTER_RUNTIME_CLASS((RenderableComponent))
+#if defined(KLAYGE_COMPILER_CLANGCL)
+#pragma clang diagnostic pop
+#endif
+
+		explicit HQTerrainRenderableComponent(RenderablePtr const& renderable);
 
 	private:
 		bool reset_terrain_;

@@ -29,7 +29,9 @@
  */
 
 #include <KlayGE/KlayGE.hpp>
+
 #include <KFL/CXX17/filesystem.hpp>
+#include <KFL/CXX2a/span.hpp>
 #include <KFL/CpuInfo.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KlayGE/ResLoader.hpp>
@@ -184,7 +186,7 @@ namespace KlayGE
 				uncompressed_tex_ = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, in_tex->Width(0), in_tex->Height(0),
 					in_tex->Depth(0), in_tex->NumMipMaps(), in_tex->ArraySize(), uncompressed_format, false);
 				uncompressed_tex_->CreateHWResource({}, nullptr);
-				compressed_tex_->CopyToTexture(*uncompressed_tex_);
+				compressed_tex_->CopyToTexture(*uncompressed_tex_, TextureFilter::Point);
 			}
 			else
 			{
@@ -356,7 +358,7 @@ namespace KlayGE
 
 			uncompressed_tex_ = MakeSharedPtr<SoftwareTexture>(Texture::TT_2D, width, height,
 				1, 1, 1, uncompressed_format, false);
-			uncompressed_tex_->CreateHWResource(uncompressed_init_data, nullptr);
+			uncompressed_tex_->CreateHWResource(MakeSpan<1>(uncompressed_init_data), nullptr);
 		}
 
 		if (metadata.ForceSRGB())
@@ -376,7 +378,7 @@ namespace KlayGE
 					init_data.row_pitch = ori_mapper.RowPitch();
 					init_data.slice_pitch = ori_mapper.SlicePitch();
 
-					srgb_uncompressed_tex->CreateHWResource(init_data, nullptr);
+					srgb_uncompressed_tex->CreateHWResource(MakeSpan<1>(init_data), nullptr);
 				}
 
 				uncompressed_tex_ = srgb_uncompressed_tex;
@@ -397,7 +399,7 @@ namespace KlayGE
 					init_data.row_pitch = ori_mapper.RowPitch();
 					init_data.slice_pitch = ori_mapper.SlicePitch();
 
-					srgb_compressed_tex->CreateHWResource(init_data, nullptr);
+					srgb_compressed_tex->CreateHWResource(MakeSpan<1>(init_data), nullptr);
 				}
 
 				compressed_tex_ = srgb_compressed_tex;
@@ -405,7 +407,7 @@ namespace KlayGE
 		}
 
 		uint32_t const num_channels = NumComponents(uncompressed_tex_->Format());
-		uint32_t channel_mapping[4];
+		int32_t channel_mapping[4];
 		for (uint32_t ch = 0; ch < num_channels; ++ ch)
 		{
 			channel_mapping[ch] = metadata.ChannelMapping(ch);
@@ -414,7 +416,7 @@ namespace KlayGE
 		bool need_swizzle = false;
 		for (uint32_t ch = 0; ch < num_channels; ++ ch)
 		{
-			if (channel_mapping[ch] != ch)
+			if (channel_mapping[ch] != static_cast<int32_t>(ch))
 			{
 				need_swizzle = true;
 				break;
@@ -443,7 +445,14 @@ namespace KlayGE
 					original_clr = line_32f[x];
 					for (uint32_t ch = 0; ch < num_channels; ++ ch)
 					{
-						swizzled_clr[ch] = original_clr[channel_mapping[ch]];
+						if (channel_mapping[ch] >= 0)
+						{
+							swizzled_clr[ch] = original_clr[channel_mapping[ch]];
+						}
+						else
+						{
+							swizzled_clr[ch] = 0;
+						}
 					}
 					line_32f[x] = swizzled_clr;
 				}
@@ -550,7 +559,36 @@ namespace KlayGE
 		}
 	}
 
-	void ImagePlane::BumpToNormal(float scale)
+	void ImagePlane::AlphaToLum()
+	{
+		compressed_tex_.reset();
+
+		uint32_t const width = uncompressed_tex_->Width(0);
+		uint32_t const height = uncompressed_tex_->Height(0);
+		ElementFormat const format = uncompressed_tex_->Format();
+		uint32_t const elem_size = NumFormatBytes(format);
+
+		Texture::Mapper mapper(*uncompressed_tex_, 0, 0, TMA_Read_Write, 0, 0, uncompressed_tex_->Width(0), uncompressed_tex_->Height(0));
+		uint8_t* ptr = mapper.Pointer<uint8_t>();
+
+		for (uint32_t y = 0; y < height; ++y)
+		{
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				Color color_32f;
+				ConvertToABGR32F(format, ptr + x * elem_size, 1, &color_32f);
+
+				float const lum = color_32f.a();
+
+				Color const color_f32(lum, lum, lum, 1);
+				ConvertFromABGR32F(format, &color_f32, 1, ptr + x * elem_size);
+			}
+
+			ptr += mapper.RowPitch();
+		}
+	}
+
+	void ImagePlane::BumpToNormal(float scale, float amplitude)
 	{
 		compressed_tex_.reset();
 
@@ -603,7 +641,37 @@ namespace KlayGE
 				float3 normal = MathLib::normalize(float3(-dx, -dy, scale));
 				normal = normal * 0.5f + float3(0.5f, 0.5f, 0.5f);
 
-				Color const color_f32(normal.x(), normal.y(), normal.z(), 1);
+				float occlusion = 1;
+				if (amplitude > 0)
+				{
+					float delta = 0;
+					float const c = height_map[y * width + x];
+					for (int oy = -1; oy < 2; ++oy)
+					{
+						int const sy = (y + oy) % height;
+						for (int ox = -1; ox < 2; ++ox)
+						{
+							int const sx = (x + ox) % width;
+							if ((ox != 0) && (oy != 0))
+							{
+								float const t = height_map[sy * width + sx] - c;
+								if (t > 0)
+								{
+									delta += t;
+								}
+							}
+						}
+					}
+
+					delta *= amplitude / 8;
+					if (delta > 0)
+					{
+						float const r = MathLib::sqrt(1 + delta * delta);
+						occlusion = (r - delta) / r;
+					}
+				}
+
+				Color const color_f32(normal.x(), normal.y(), normal.z(), occlusion);
 				ConvertFromABGR32F(format, &color_f32, 1, ptr + x * elem_size);
 			}
 
@@ -733,10 +801,10 @@ namespace KlayGE
 						init_data.row_pitch = row_pitch;
 						init_data.slice_pitch = (this_tex_region_height + block_height - 1) / block_height * row_pitch;
 
-						new_tex_regions[i]->CreateHWResource(init_data, nullptr);
+						new_tex_regions[i]->CreateHWResource(MakeSpan<1>(init_data), nullptr);
 
 						uncompressed_tex_->CopyToSubTexture2D(*new_tex_regions[i], 0, 0, 0, 0, tex_width, this_tex_region_height,
-							0, 0, 0, i * tex_region_height, tex_width, this_tex_region_height);
+							0, 0, 0, i * tex_region_height, tex_width, this_tex_region_height, TextureFilter::Point);
 					}
 				});
 		}
@@ -753,7 +821,7 @@ namespace KlayGE
 			joiners[i]();
 		}
 
-		new_tex->CreateHWResource(init_data, nullptr);
+		new_tex->CreateHWResource(MakeSpan<1>(init_data), nullptr);
 
 		if (IsCompressedFormat(format))
 		{
@@ -791,10 +859,10 @@ namespace KlayGE
 				format, width, height, 1,
 				mapper.Pointer<void>(), mapper.RowPitch(), mapper.SlicePitch(), format,
 				uncompressed_tex_->Width(0), uncompressed_tex_->Height(0), 1,
-				linear);
+				linear ? TextureFilter::Linear : TextureFilter::Point);
 		}
 
-		target.uncompressed_tex_->CreateHWResource(target_init_data, nullptr);
+		target.uncompressed_tex_->CreateHWResource(MakeSpan<1>(target_init_data), nullptr);
 
 		return target;
 	}

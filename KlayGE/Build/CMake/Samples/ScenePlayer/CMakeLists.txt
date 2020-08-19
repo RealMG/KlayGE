@@ -40,12 +40,15 @@ SET(CONTENT_FILES
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/Copy.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/Copy2LightBuffer.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/Depth.ppml
+	${KLAYGE_PROJECT_DIR}/media/PostProcessors/DepthOfField.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/FFT.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/LensEffects.ppml
+	${KLAYGE_PROJECT_DIR}/media/PostProcessors/MotionBlur.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/MultiRes.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/PostToneMapping.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/Resizer.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/RSM2VPLs.ppml
+	${KLAYGE_PROJECT_DIR}/media/PostProcessors/SAT.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/SMAA.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/SSVO.ppml
 	${KLAYGE_PROJECT_DIR}/media/PostProcessors/TAA.ppml
@@ -60,17 +63,21 @@ SET(CONTENT_FILES
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/DeferredRendering.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/DeferredRenderingDebug.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Depth.kfx
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/DepthOfField.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/GBuffer.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/FFT.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Font.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LensEffects.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LightSourceProxy.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/LightIndexedDeferredRendering.kfx
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/MotionBlur.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/MultiRes.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Particle.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/PostToneMapping.kfx
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/PredefinedCBuffers.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/Resizer.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/RSM2VPLs.kfx
+	${KLAYGE_PROJECT_DIR}/media/RenderFX/SAT.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/SkyBox.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/SMAA.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/SSGI.kfx
@@ -83,6 +90,7 @@ SET(CONTENT_FILES
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/VarianceDepthMap.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/VPLsLighting.kfx
 	${KLAYGE_PROJECT_DIR}/media/RenderFX/UI.kfx
+	${KLAYGE_PROJECT_DIR}/media/Textures/2D/BokehPattern.dds
 	${KLAYGE_PROJECT_DIR}/media/Textures/2D/lens_effects_imag.dds
 	${KLAYGE_PROJECT_DIR}/media/Textures/2D/lens_effects_real.dds
 	${KLAYGE_PROJECT_DIR}/media/Textures/2D/powered_by_klayge.dds

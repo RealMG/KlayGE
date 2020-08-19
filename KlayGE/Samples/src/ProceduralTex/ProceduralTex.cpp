@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -14,14 +13,15 @@
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/GraphicsBuffer.hpp>
 #include <KlayGE/Light.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/Camera.hpp>
 
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/InputFactory.hpp>
 
-#include <vector>
+#include <iterator>
 #include <sstream>
+#include <vector>
 
 #include "SampleCommon.hpp"
 #include "ProceduralTex.hpp"
@@ -31,6 +31,14 @@ using namespace KlayGE;
 
 namespace
 {
+	enum class ProceduralType
+	{
+		Wood = 0,
+		Marble,
+		Cloud,
+		Electro,
+	};
+
 	class RenderPolygon : public StaticMesh
 	{
 	public:
@@ -41,15 +49,6 @@ namespace
 			technique_ = effect_->TechniqueByName("ProceduralMarbleTex");
 		}
 
-		void DoBuildMeshInfo(RenderModel const & model) override
-		{
-			KFL_UNUSED(model);
-
-			AABBox const & pos_bb = this->PosBound();
-			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
-			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
-		}
-
 		void AppTime(float app_time)
 		{
 			*(effect_->ParameterByName("t")) = app_time / 2.0f;
@@ -57,6 +56,8 @@ namespace
 
 		void OnRenderBegin()
 		{
+			StaticMesh::OnRenderBegin();
+
 			App3DFramework const & app = Context::Instance().AppInstance();
 			Camera const & camera = app.ActiveCamera();
 
@@ -81,9 +82,28 @@ namespace
 			*(effect_->ParameterByName("light_falloff")) = light_falloff;
 		}
 
-		void ProceduralType(int type)
+		void ProceduralType(ProceduralType type)
 		{
-			technique_ = effect_->TechniqueByIndex(type);
+			std::string_view name;
+			switch (type)
+			{
+			case ProceduralType::Wood:
+				name = "ProceduralWoodTex";
+				break;
+
+			case ProceduralType::Marble:
+				name = "ProceduralMarbleTex";
+				break;
+
+			case ProceduralType::Cloud:
+				name = "ProceduralCloudTex";
+				break;
+
+			case ProceduralType::Electro:
+				name = "ProceduralElectroTex";
+				break;
+			}
+			technique_ = effect_->TechniqueByName(name);
 		}
 
 		void ProceduralFreq(float freq)
@@ -125,7 +145,10 @@ ProceduralTexApp::ProceduralTexApp()
 void ProceduralTexApp::OnCreate()
 {
 	font_ = SyncLoadFont("gkai00mp.kfont");
-	UIManager::Instance().Load(ResLoader::Instance().Open("ProceduralTex.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("ProceduralTex.uiml"));
+
+	this->LookAt(float3(-0.18f, 0.24f, -0.18f), float3(0, 0.05f, 0));
+	this->Proj(0.01f, 100);
 }
 
 void ProceduralTexApp::OnResize(uint32_t width, uint32_t height)
@@ -150,7 +173,7 @@ void ProceduralTexApp::TypeChangedHandler(KlayGE::UIComboBox const & sender)
 	procedural_type_ = sender.GetSelectedIndex();
 	polygon_model_->ForEachMesh([this](Renderable& mesh)
 		{
-			checked_cast<RenderPolygon&>(mesh).ProceduralType(procedural_type_);
+			checked_cast<RenderPolygon&>(mesh).ProceduralType(static_cast<ProceduralType>(procedural_type_));
 		});
 }
 
@@ -223,9 +246,6 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 					}
 				});
 
-			this->LookAt(float3(-0.18f, 0.24f, -0.18f), float3(0, 0.05f, 0));
-			this->Proj(0.01f, 100);
-
 			tb_controller_.AttachCamera(this->ActiveCamera());
 			tb_controller_.Scalers(0.01f, 0.003f);
 
@@ -239,15 +259,20 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 			light_->Attrib(0);
 			light_->Color(float3(2, 2, 2));
 			light_->Falloff(float3(1, 0, 1.0f));
-			light_->Position(float3(0.25f, 0.5f, -1.0f));
-			light_->AddToSceneManager();
 
-			light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-			light_proxy_->Scaling(0.01f, 0.01f, 0.01f);
+			auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+			light_node->TransformToParent(MathLib::translation(0.25f, 0.5f, -1.0f));
+			light_node->AddComponent(light_);
+
+			auto light_proxy = LoadLightSourceProxyModel(light_);
+			light_proxy->RootNode()->TransformToParent(
+				MathLib::scaling(0.01f, 0.01f, 0.01f) * light_proxy->RootNode()->TransformToParent());
+			light_node->AddChild(light_proxy->RootNode());
+
 			{
 				auto& scene_mgr = Context::Instance().SceneManagerInstance();
 				std::lock_guard<std::mutex> lock(scene_mgr.MutexForUpdate());
-				scene_mgr.SceneRootNode().AddChild(light_proxy_->RootNode());
+				scene_mgr.SceneRootNode().AddChild(light_node);
 			}
 
 			loading_percentage_ = 80;
@@ -319,7 +344,7 @@ uint32_t ProceduralTexApp::DoUpdate(uint32_t /*pass*/)
 		float3 light_pos(0.25f, 0.5f, -1.0f);
 		light_pos = MathLib::transform_coord(light_pos, this->ActiveCamera().InverseViewMatrix());
 		light_pos = MathLib::normalize(light_pos) * 1.2f;
-		light_->Position(light_pos);
+		light_->BoundSceneNode()->TransformToParent(MathLib::translation(light_pos));
 
 		polygon_model_->ForEachMesh([this, &light_pos](Renderable& mesh)
 			{

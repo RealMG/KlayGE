@@ -38,7 +38,14 @@
 #include <KlayGE/Window.hpp>
 
 #if (_WIN32_WINNT >= _WIN32_WINNT_WINBLUE)
+#if defined(KLAYGE_COMPILER_MSVC) && (KLAYGE_COMPILER_VERSION <= 140)
+#pragma warning(push)
+#pragma warning(disable: 4800) // BOOL to bool
+#endif
 #include <VersionHelpers.h>
+#if defined(KLAYGE_COMPILER_MSVC) && (KLAYGE_COMPILER_VERSION <= 140)
+#pragma warning(pop)
+#endif
 #include <ShellScalingAPI.h>
 #endif
 #include <windowsx.h>
@@ -111,6 +118,7 @@ namespace KlayGE
 		{
 			wnd_ = static_cast<HWND>(native_wnd);
 			default_wnd_proc_ = reinterpret_cast<WNDPROC>(::GetWindowLongPtrW(wnd_, GWLP_WNDPROC));
+			win_style_ = static_cast<uint32_t>(GetWindowLongPtrW(wnd_, GWL_STYLE));
 			::SetWindowLongPtrW(wnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc));
 			external_wnd_ = true;
 		}

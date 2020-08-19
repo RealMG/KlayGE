@@ -1,7 +1,7 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/CustomizedStreamBuf.hpp>
 #include <KFL/ErrorHandling.hpp>
+#include <KFL/StringUtil.hpp>
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/FrameBuffer.hpp>
@@ -10,7 +10,7 @@
 #include <KlayGE/RenderEffect.hpp>
 #include <KlayGE/RenderableHelper.hpp>
 #include <KlayGE/Camera.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/SkyBox.hpp>
 #include <KlayGE/DeferredRenderingLayer.hpp>
 #include <KlayGE/UI.hpp>
@@ -21,11 +21,9 @@
 #include <KlayGE/InputFactory.hpp>
 #include <KFL/XMLDom.hpp>
 
-#include <sstream>
 #include <fstream>
-
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/trim.hpp>
+#include <iterator>
+#include <sstream>
 
 #include "KGEditorCore.hpp"
 
@@ -44,7 +42,6 @@ namespace
 
 			effect_ = SyncLoadRenderEffect("MVUtil.fxml");
 			simple_forward_tech_ = effect_->TechniqueByName("SimpleAxisTech");
-			mvp_param_ = effect_->ParameterByName("mvp");
 
 			float4 xyzs[] =
 			{
@@ -68,12 +65,6 @@ namespace
 
 			effect_attrs_ |= EA_SimpleForward;
 		}
-
-		void OnRenderBegin()
-		{
-			Camera const & camera = Context::Instance().AppInstance().ActiveCamera();
-			*mvp_param_ = model_mat_ * camera.ViewProjMatrix();
-		}
 	};
 
 	class RenderableTranslationAxis : public Renderable
@@ -87,8 +78,6 @@ namespace
 			effect_ = SyncLoadRenderEffect("MVUtil.fxml");
 			simple_forward_tech_ = effect_->TechniqueByName("AxisTech");
 
-			mvp_param_ = effect_->ParameterByName("mvp");
-			model_ep_ = effect_->ParameterByName("model");
 			hl_axis_ep_ = effect_->ParameterByName("hl_axis");
 			*hl_axis_ep_ = int3(0, 0, 0);
 
@@ -190,15 +179,7 @@ namespace
 			*hl_axis_ep_ = int3(axis & 1UL, axis & 2UL, axis & 4UL);
 		}
 
-		void OnRenderBegin()
-		{
-			Camera const & camera = Context::Instance().AppInstance().ActiveCamera();
-			*mvp_param_ = model_mat_ * camera.ViewProjMatrix();
-			*model_ep_ = model_mat_;
-		}
-
 	private:
-		RenderEffectParameter* model_ep_;
 		RenderEffectParameter* hl_axis_ep_;
 	};
 
@@ -213,8 +194,6 @@ namespace
 			effect_ = SyncLoadRenderEffect("MVUtil.fxml");
 			simple_forward_tech_ = effect_->TechniqueByName("AxisTech");
 
-			mvp_param_ = effect_->ParameterByName("mvp");
-			model_ep_ = effect_->ParameterByName("model");
 			hl_axis_ep_ = effect_->ParameterByName("hl_axis");
 			*hl_axis_ep_ = int3(0, 0, 0);
 
@@ -296,15 +275,7 @@ namespace
 			*hl_axis_ep_ = int3(axis & 1UL, axis & 2UL, axis & 4UL);
 		}
 
-		void OnRenderBegin()
-		{
-			Camera const & camera = Context::Instance().AppInstance().ActiveCamera();
-			*mvp_param_ = model_mat_ * camera.ViewProjMatrix();
-			*model_ep_ = model_mat_;
-		}
-
 	private:
-		RenderEffectParameter* model_ep_;
 		RenderEffectParameter* hl_axis_ep_;
 	};
 
@@ -319,8 +290,6 @@ namespace
 			effect_ = SyncLoadRenderEffect("MVUtil.fxml");
 			simple_forward_tech_ = effect_->TechniqueByName("AxisTech");
 
-			mvp_param_ = effect_->ParameterByName("mvp");
-			model_ep_ = effect_->ParameterByName("model");
 			hl_axis_ep_ = effect_->ParameterByName("hl_axis");
 			*hl_axis_ep_ = int3(0, 0, 0);
 
@@ -459,15 +428,7 @@ namespace
 			*hl_axis_ep_ = int3(axis & 1UL, axis & 2UL, axis & 4UL);
 		}
 
-		void OnRenderBegin()
-		{
-			Camera const & camera = Context::Instance().AppInstance().ActiveCamera();
-			*mvp_param_ = model_mat_ * camera.ViewProjMatrix();
-			*model_ep_ = model_mat_;
-		}
-
 	private:
-		RenderEffectParameter* model_ep_;
 		RenderEffectParameter* hl_axis_ep_;
 	};
 
@@ -481,7 +442,6 @@ namespace
 
 			effect_ = SyncLoadRenderEffect("MVUtil.fxml");
 			simple_forward_tech_ = effect_->TechniqueByName("GridTech");
-			mvp_param_ = effect_->ParameterByName("mvp");
 
 			int const GRID_SIZE = 50;
 
@@ -505,12 +465,6 @@ namespace
 			tc_aabb_ = AABBox(float3(0, 0, 0), float3(0, 0, 0));
 
 			effect_attrs_ |= EA_SimpleForward;
-		}
-
-		void OnRenderBegin()
-		{
-			Camera const & camera = Context::Instance().AppInstance().ActiveCamera();
-			*mvp_param_ = model_mat_ * camera.ViewProjMatrix();
 		}
 	};
 }
@@ -536,7 +490,7 @@ namespace KlayGE
 		RenderEngine& re = rf.RenderEngineInstance();
 		deferred_rendering_->SetupViewport(0, re.CurFrameBuffer(), 0);
 
-		auto const fmt = re.DeviceCaps().BestMatchRenderTargetFormat({ EF_ABGR8, EF_ABGR8 }, 1, 0);
+		auto const fmt = re.DeviceCaps().BestMatchRenderTargetFormat(MakeSpan({EF_ABGR8, EF_ABGR8}), 1, 0);
 		BOOST_ASSERT(fmt != EF_Unknown);
 
 		selective_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Write);
@@ -600,9 +554,9 @@ namespace KlayGE
 
 		RenderFactory& rf = Context::Instance().RenderFactoryInstance();
 		RenderEngine& re = rf.RenderEngineInstance();
-		system_camera_ = re.CurFrameBuffer()->GetViewport()->camera;
+		system_camera_ = re.CurFrameBuffer()->Viewport()->Camera();
 		selective_fb_ = rf.MakeFrameBuffer();
-		selective_fb_->GetViewport()->camera = system_camera_;
+		selective_fb_->Viewport()->Camera(system_camera_);
 
 		this->UpdateSceneAABB();
 	}
@@ -742,7 +696,7 @@ namespace KlayGE
 			uint32_t urv = deferred_rendering_->Update(deferred_pass);
 			if (urv & App3DFramework::URV_Finished)
 			{
-				selective_tex_->CopyToTexture(*selective_cpu_tex_);
+				selective_tex_->CopyToTexture(*selective_cpu_tex_, TextureFilter::Point);
 				update_selective_buffer_ = false;
 			}
 
@@ -916,6 +870,8 @@ namespace KlayGE
 
 	uint32_t KGEditorCore::AddLight(LightSource::LightType type, std::string const & name)
 	{
+		auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+
 		LightSourcePtr light;
 		switch (type)
 		{
@@ -954,31 +910,32 @@ namespace KlayGE
 		light->Attrib(0);
 		light->Color(float3(1, 1, 1));
 		light->Falloff(float3(1, 0, 1));
-		light->AddToSceneManager();
 
-		auto light_proxy = MakeSharedPtr<SceneObjectLightSourceProxy>(light);
-		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_proxy->RootNode());
+		auto light_proxy = LoadLightSourceProxyModel(light);
+		auto light_proxy_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+		light_proxy_node->AddChild(light_proxy->RootNode());
+		light_node->AddChild(light_proxy_node);
+		light_node->AddComponent(light);
+		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(light_node);
 
 		uint32_t const entity_id = last_entity_id_ + 1;
 		last_entity_id_ = entity_id;
-		auto const & model = checked_pointer_cast<SceneObjectLightSourceProxy>(light_proxy)->LightModel();
-		for (size_t i = 0; i < model->NumMeshes(); ++ i)
+		for (size_t i = 0; i < light_proxy->NumMeshes(); ++ i)
 		{
-			model->Mesh(i)->ObjectID(entity_id);
+			light_proxy->Mesh(i)->ObjectID(entity_id);
 		}
 
 		EntityInfo li;
 		li.name = name;
 		li.type = ET_Light;
-		li.model = model;
+		li.model = light_proxy;
 		li.light = light;
 		li.obb = MathLib::convert_to_obbox(light_proxy->RootNode()->PosBoundOS());
 		li.trf_pivot = float3(0, 0, 0);
 		li.trf_pos = float3(0, 0, 0);
 		li.trf_scale = float3(1, 1, 1);
 		li.trf_rotate = Quaternion::Identity();
-		li.scene_node = light_proxy->RootNode();
-		li.light_proxy = light_proxy;
+		li.scene_node = light_node;
 		entities_.insert(std::make_pair(entity_id, li));
 
 		update_selective_buffer_ = true;
@@ -993,7 +950,6 @@ namespace KlayGE
 		{
 			if (ET_Light == iter->second.type)
 			{
-				iter->second.light->DelFromSceneManager();
 				Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(iter->second.scene_node);
 				entities_.erase(iter ++);
 			}
@@ -1009,32 +965,35 @@ namespace KlayGE
 
 	uint32_t KGEditorCore::AddCamera(std::string const & name)
 	{
-		CameraPtr camera = MakeSharedPtr<Camera>();
-		camera->AddToSceneManager();
+		auto camera_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
 
-		auto camera_proxy = MakeSharedPtr<SceneObjectCameraProxy>(camera);
-		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(camera_proxy->RootNode());
+		CameraPtr camera = MakeSharedPtr<Camera>();
+
+		auto camera_proxy = LoadCameraProxyModel(camera);
+		auto camera_proxy_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable | SceneNode::SOA_NotCastShadow);
+		camera_proxy_node->AddChild(camera_proxy->RootNode());
+		camera_node->AddChild(camera_proxy_node);
+		camera_node->AddComponent(camera);
+		Context::Instance().SceneManagerInstance().SceneRootNode().AddChild(camera_node);
 
 		uint32_t const entity_id = last_entity_id_ + 1;
 		last_entity_id_ = entity_id;
-		auto const & model = checked_pointer_cast<SceneObjectCameraProxy>(camera_proxy)->CameraModel();
-		for (size_t i = 0; i < model->NumMeshes(); ++ i)
+		for (size_t i = 0; i < camera_proxy->NumMeshes(); ++ i)
 		{
-			model->Mesh(i)->ObjectID(entity_id);
+			camera_proxy->Mesh(i)->ObjectID(entity_id);
 		}
 
 		EntityInfo ci;
 		ci.name = name;
 		ci.type = ET_Camera;
-		ci.model = model;
+		ci.model = camera_proxy;
 		ci.camera = camera;
 		ci.obb = MathLib::convert_to_obbox(camera_proxy->RootNode()->PosBoundOS());
 		ci.trf_pivot = float3(0, 0, 0);
 		ci.trf_pos = float3(0, 0, 0);
 		ci.trf_scale = float3(1, 1, 1);
 		ci.trf_rotate = Quaternion::Identity();
-		ci.scene_node = camera_proxy->RootNode();
-		ci.camera_proxy = camera_proxy;
+		ci.scene_node = camera_node;
 		entities_.insert(std::make_pair(entity_id, ci));
 
 		update_selective_buffer_ = true;
@@ -1049,7 +1008,6 @@ namespace KlayGE
 		{
 			if (ET_Camera == iter->second.type)
 			{
-				iter->second.light->DelFromSceneManager();
 				Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(iter->second.scene_node);
 				entities_.erase(iter ++);
 			}
@@ -1071,24 +1029,6 @@ namespace KlayGE
 		if (iter != entities_.end())
 		{
 			Context::Instance().SceneManagerInstance().SceneRootNode().RemoveChild(iter->second.scene_node);
-
-			switch (iter->second.type)
-			{
-			case ET_Model:
-				break;
-
-			case ET_Light:
-				iter->second.light->DelFromSceneManager();
-				break;
-
-			case ET_Camera:
-				iter->second.camera->DelFromSceneManager();
-				break;
-
-			default:
-				break;
-			}
-
 			entities_.erase(iter);
 		}
 
@@ -1263,9 +1203,9 @@ namespace KlayGE
 		RenderEngine& re = Context::Instance().RenderFactoryInstance().RenderEngineInstance();
 		CameraPtr camera = (0 == id) ? system_camera_ : this->GetCamera(id);
 
-		re.CurFrameBuffer()->GetViewport()->camera = camera;
-		re.DefaultFrameBuffer()->GetViewport()->camera = camera;
-		selective_fb_->GetViewport()->camera = camera;
+		re.CurFrameBuffer()->Viewport()->Camera(camera);
+		re.DefaultFrameBuffer()->Viewport()->Camera(camera);
+		selective_fb_->Viewport()->Camera(camera);
 
 		tb_controller_.AttachCamera(this->ActiveCamera());
 	}
@@ -1283,15 +1223,16 @@ namespace KlayGE
 		{
 		case ET_Light:
 			mat = this->CalcAdaptiveScaling(ei, 25, proxy_scaling);
-			ei.light->ModelMatrix(mat);
-			ei.light_proxy->Scaling(proxy_scaling * ei.trf_scale);
+			ei.scene_node->TransformToParent(mat);
+			ei.scene_node->Children()[0]->TransformToParent(MathLib::scaling(proxy_scaling * ei.trf_scale));
 			break;
 
 		case ET_Camera:
 			mat = this->CalcAdaptiveScaling(ei, 75, proxy_scaling);
-			ei.camera->ViewParams(ei.trf_pos, ei.trf_pos + MathLib::transform_normal(float3(0, 0, 1), mat),
-				MathLib::transform_normal(float3(0, 1, 0), mat));
-			ei.camera_proxy->Scaling(proxy_scaling * ei.trf_scale);
+			ei.camera->LookAtDist(MathLib::length(MathLib::transform_normal(float3(0, 0, 1), mat)));
+			ei.camera->BoundSceneNode()->TransformToWorld(
+				MathLib::inverse(MathLib::look_at_lh(ei.trf_pos, ei.trf_pos + MathLib::transform_normal(float3(0, 0, 1), mat))));
+			ei.scene_node->Children()[0]->TransformToParent(MathLib::scaling(proxy_scaling * ei.trf_scale));
 			break;
 
 		default:
@@ -1404,13 +1345,12 @@ namespace KlayGE
 				if (ET_Light == ei.type)
 				{
 					mat = this->CalcAdaptiveScaling(ei, 25, proxy_scaling);
-					ei.light_proxy->Scaling(proxy_scaling * ei.trf_scale);
 				}
 				else
 				{
 					mat = this->CalcAdaptiveScaling(ei, 75, proxy_scaling);
-					ei.camera_proxy->Scaling(proxy_scaling * ei.trf_scale);
 				}
+				ei.scene_node->Children()[0]->TransformToParent(MathLib::scaling(proxy_scaling * ei.trf_scale));
 
 				if (selected_entity_ == entity.first)
 				{
@@ -1841,7 +1781,7 @@ namespace KlayGE
 		if (file)
 		{
 			XMLDocument kges_doc;
-			XMLNodePtr kges_root = kges_doc.Parse(file);
+			XMLNodePtr kges_root = kges_doc.Parse(*file);
 			this->SceneName(std::string(kges_root->Attrib("name")->ValueString()));
 			{
 				XMLAttributePtr attr = kges_root->Attrib("skybox");
@@ -1897,11 +1837,10 @@ namespace KlayGE
 					if (attr_node)
 					{
 						std::string_view const attr_str = attr_node->Attrib("value")->ValueString();
-						std::vector<std::string> tokens;
-						boost::algorithm::split(tokens, attr_str, boost::is_any_of(" \t|"));
+						std::vector<std::string_view> tokens = StringUtil::Split(attr_str, StringUtil::IsAnyOf(" \t|"));
 						for (auto& token : tokens)
 						{
-							boost::algorithm::trim(token);
+							token = StringUtil::Trim(token);
 
 							if ("no_shadow" == token)
 							{
@@ -1923,6 +1862,8 @@ namespace KlayGE
 					}
 					light->Attrib(light_attr);
 
+					float3 dir(0, 0, 1);
+					float3 pos(0, 0, 0);
 					XMLNodePtr color_node = node->FirstNode("color");
 					if (color_node)
 					{
@@ -1937,11 +1878,9 @@ namespace KlayGE
 						XMLNodePtr dir_node = node->FirstNode("dir");
 						if (dir_node)
 						{
-							float3 dir;
 							auto v = dir_node->Attrib("v")->ValueString();
 							MemInputStreamBuf stream_buff(v.data(), v.size());
 							std::istream(&stream_buff) >> dir.x() >> dir.y() >> dir.z();
-							light->Direction(dir);
 						}
 					}
 					if ((LightSource::LT_Point == light->Type()) || (LightSource::LT_Spot == light->Type())
@@ -1950,11 +1889,9 @@ namespace KlayGE
 						XMLNodePtr pos_node = node->FirstNode("pos");
 						if (pos_node)
 						{
-							float3 pos;
 							auto v = pos_node->Attrib("v")->ValueString();
 							MemInputStreamBuf stream_buff(v.data(), v.size());
 							std::istream(&stream_buff) >> pos.x() >> pos.y() >> pos.z();
-							light->Position(pos);
 						}
 
 						XMLNodePtr fall_off_node = node->FirstNode("fall_off");
@@ -1995,6 +1932,8 @@ namespace KlayGE
 						// TODO: sphere area light and tube area light
 					}
 
+					light->BoundSceneNode()->TransformToParent(MathLib::inverse(MathLib::look_at_lh(pos, pos + dir)));
+
 					this->LoadTransformNodes(node, oi);
 				}
 				else
@@ -2033,7 +1972,8 @@ namespace KlayGE
 						MemInputStreamBuf stream_buff(v.data(), v.size());
 						std::istream(&stream_buff) >> up.x() >> up.y() >> up.z();
 					}
-					camera->ViewParams(eye_pos, look_at, up);
+					camera->LookAtDist(MathLib::length(look_at - eye_pos));
+					camera->BoundSceneNode()->TransformToWorld(MathLib::inverse(MathLib::look_at_lh(eye_pos, look_at, up)));
 
 					float fov = PI / 4;
 					float aspect = 1;

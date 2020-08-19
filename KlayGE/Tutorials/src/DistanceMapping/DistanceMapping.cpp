@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -13,7 +12,7 @@
 #include <KlayGE/Context.hpp>
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/Mesh.hpp>
 #include <KlayGE/UI.hpp>
 #include <KlayGE/Light.hpp>
 #include <KlayGE/Camera.hpp>
@@ -21,8 +20,9 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/InputFactory.hpp>
 
-#include <vector>
+#include <iterator>
 #include <sstream>
+#include <vector>
 
 #include "SampleCommon.hpp"
 #include "DistanceMapping.hpp"
@@ -142,12 +142,6 @@ namespace
 			tc_aabb_ = AABBox(float3(0, 0, 0), float3(0, 0, 0));
 		}
 
-		void ModelMatrix(float4x4 const & mat)
-		{
-			Renderable::ModelMatrix(mat);
-			inv_model_mat_ = MathLib::inverse(model_mat_);
-		}
-
 		void LightPos(float3 const & light_pos)
 		{
 			*(effect_->ParameterByName("light_pos")) = MathLib::transform_coord(light_pos, inv_model_mat_);
@@ -170,21 +164,18 @@ namespace
 			*(effect_->ParameterByName("worldviewproj")) = model_mat_ * app.ActiveCamera().ViewProjMatrix();
 			*(effect_->ParameterByName("eye_pos")) = MathLib::transform_coord(app.ActiveCamera().EyePos(), inv_model_mat_);
 		}
-
-	private:
-		float4x4 inv_model_mat_;
 	};
 
 
-	class PointLightSourceUpdate
+	class PointLightNodeUpdate
 	{
 	public:
-		void operator()(LightSource& light, float app_time, float /*elapsed_time*/)
+		void operator()(SceneNode& node, float app_time, float elapsed_time)
 		{
-			float4x4 matRot = MathLib::rotation_z(app_time);
+			KFL_UNUSED(elapsed_time);
 
-			float3 light_pos(1, 0, -1);
-			light.Position(MathLib::transform_coord(light_pos, matRot));
+			float4x4 const mat_rot = MathLib::rotation_z(app_time);
+			node.TransformToParent(MathLib::translation(MathLib::transform_coord(float3(1, 0, -1), mat_rot)));
 		}
 	};
 
@@ -239,13 +230,16 @@ void DistanceMapping::OnCreate()
 	light_->Attrib(0);
 	light_->Color(float3(2, 2, 2));
 	light_->Falloff(float3(1, 0, 1.0f));
-	light_->Position(float3(1, 0, -1));
-	light_->BindUpdateFunc(PointLightSourceUpdate());
-	light_->AddToSceneManager();
 
-	light_proxy_ = MakeSharedPtr<SceneObjectLightSourceProxy>(light_);
-	light_proxy_->Scaling(0.05f, 0.05f, 0.05f);
-	root_node.AddChild(light_proxy_->RootNode());
+	auto light_proxy = LoadLightSourceProxyModel(light_);
+	light_proxy->RootNode()->TransformToParent(MathLib::scaling(0.05f, 0.05f, 0.05f) * light_proxy->RootNode()->TransformToParent());
+
+	auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable | SceneNode::SOA_Moveable);
+	light_node->TransformToParent(MathLib::translation(1.0f, 0.0f, -1.0f));
+	light_node->AddComponent(light_);
+	light_node->AddChild(light_proxy->RootNode());
+	light_node->OnMainThreadUpdate().Connect(PointLightNodeUpdate());
+	root_node.AddChild(light_node);
 
 	checked_pointer_cast<RenderPolygon>(polygon_renderable_)->LightFalloff(light_->Falloff());
 
@@ -261,7 +255,7 @@ void DistanceMapping::OnCreate()
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("DistanceMapping.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("DistanceMapping.uiml"));
 }
 
 void DistanceMapping::OnResize(uint32_t width, uint32_t height)

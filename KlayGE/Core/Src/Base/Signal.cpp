@@ -38,16 +38,12 @@ namespace KlayGE
 	{
 		namespace Detail
 		{
-			SignalBase::~SignalBase() = default;
+			SignalBase::~SignalBase() noexcept = default;
 		}
 
-		Connection::Connection() = default;
+		Connection::Connection() noexcept = default;
 
-		Connection::Connection(Connection const& rhs) : signal_(rhs.signal_), slot_(rhs.slot_)
-		{
-		}
-
-		Connection::Connection(Connection&& rhs) : signal_(std::move(rhs.signal_)), slot_(std::move(rhs.slot_))
+		Connection::Connection(Connection&& rhs) noexcept : signal_(std::move(rhs.signal_)), slot_(std::move(rhs.slot_))
 		{
 		}
 
@@ -55,17 +51,7 @@ namespace KlayGE
 		{
 		}
 
-		Connection& Connection::operator=(Connection const& rhs)
-		{
-			if (this != &rhs)
-			{
-				signal_ = rhs.signal_;
-				slot_ = rhs.slot_;
-			}
-			return *this;
-		}
-
-		Connection& Connection::operator=(Connection&& rhs)
+		Connection& Connection::operator=(Connection&& rhs) noexcept
 		{
 			if (this != &rhs)
 			{

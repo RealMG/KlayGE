@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/ErrorHandling.hpp>
 #include <KFL/Util.hpp>
 #include <KlayGE/GraphicsBuffer.hpp>
@@ -18,7 +17,7 @@
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Mesh.hpp>
 #include <KlayGE/Texture.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/Light.hpp>
 #include <KlayGE/Camera.hpp>
@@ -27,8 +26,9 @@
 #include <KlayGE/RenderFactory.hpp>
 #include <KlayGE/InputFactory.hpp>
 
-#include <vector>
+#include <iterator>
 #include <sstream>
+#include <vector>
 
 #include "SampleCommon.hpp"
 #include "VDMParticle.hpp"
@@ -48,59 +48,17 @@ namespace
 			technique_ = effect_->TechniqueByName("Mesh");
 		}
 
-		void DoBuildMeshInfo(RenderModel const & model) override
-		{
-			StaticMesh::DoBuildMeshInfo(model);
-
-			*(effect_->ParameterByName("albedo_tex")) = textures_[RenderMaterial::TS_Albedo];
-			*(effect_->ParameterByName("metalness_tex")) = textures_[RenderMaterial::TS_Metalness];
-			*(effect_->ParameterByName("glossiness_tex")) = textures_[RenderMaterial::TS_Glossiness];
-			*(effect_->ParameterByName("emissive_tex")) = textures_[RenderMaterial::TS_Emissive];
-			*(effect_->ParameterByName("normal_tex")) = textures_[RenderMaterial::TS_Normal];
-
-			*(effect_->ParameterByName("albedo_clr")) = mtl_->albedo;
-			*(effect_->ParameterByName("metalness_clr")) = float2(mtl_->metalness, !!textures_[RenderMaterial::TS_Metalness]);
-			*(effect_->ParameterByName("glossiness_clr")) = float2(mtl_->glossiness, !!textures_[RenderMaterial::TS_Glossiness]);
-			*(effect_->ParameterByName("emissive_clr")) = float4(mtl_->emissive.x(), mtl_->emissive.y(), mtl_->emissive.z(),
-				!!textures_[RenderMaterial::TS_Emissive]);
-			*(effect_->ParameterByName("albedo_map_enabled")) = static_cast<int32_t>(!!textures_[RenderMaterial::TS_Albedo]);
-
-			*(effect_->ParameterByName("normal_map_enabled")) = static_cast<int32_t>(!!textures_[RenderMaterial::TS_Normal]);
-
-			AABBox const & pos_bb = this->PosBound();
-			*(effect_->ParameterByName("pos_center")) = pos_bb.Center();
-			*(effect_->ParameterByName("pos_extent")) = pos_bb.HalfSize();
-
-			AABBox const & tc_bb = this->TexcoordBound();
-			*(effect_->ParameterByName("tc_center")) = float2(tc_bb.Center().x(), tc_bb.Center().y());
-			*(effect_->ParameterByName("tc_extent")) = float2(tc_bb.HalfSize().x(), tc_bb.HalfSize().y());
-		}
-
-		void ModelMatrix(float4x4 const & mat) override
-		{
-			StaticMesh::ModelMatrix(mat);
-
-			inv_model_mat_ = MathLib::inverse(model_mat_);
-		}
-
 		void OnRenderBegin()
 		{
-			App3DFramework const & app = Context::Instance().AppInstance();
-
-			*(effect_->ParameterByName("mvp")) = model_mat_ * app.ActiveCamera().ViewProjMatrix();
-			*(effect_->ParameterByName("model")) = model_mat_;
-			*(effect_->ParameterByName("eye_pos")) = app.ActiveCamera().EyePos();
+			StaticMesh::OnRenderBegin();
 
 			auto& scene_mgr = Context::Instance().SceneManagerInstance();
-			auto const& light_src = *scene_mgr.GetLight(0);
+			auto const& light_src = *scene_mgr.GetFrameLight(0);
 
 			*(effect_->ParameterByName("light_pos")) = light_src.Position();
 			*(effect_->ParameterByName("light_color")) = light_src.Color();
 			*(effect_->ParameterByName("light_falloff")) = light_src.Falloff();
 		}
-
-	private:
-		float4x4 inv_model_mat_;
 	};
 
 
@@ -173,23 +131,25 @@ void VDMParticleApp::OnCreate()
 	light_->Attrib(0);
 	light_->Color(float3(1.0f, 0.67f, 0.55f) * 20.0f);
 	light_->Falloff(float3(1, 0.5f, 0));
-	light_->Position(float3(0, 0, 0));
-	light_->Direction(float3(0, 1, 0));
 	light_->OuterAngle(PI / 2.5f);
 	light_->InnerAngle(PI / 4);
-	light_->AddToSceneManager();
+
+	auto light_node = MakeSharedPtr<SceneNode>(SceneNode::SOA_Cullable);
+	light_node->TransformToParent(MathLib::inverse(MathLib::look_at_lh(float3(0, 0, 0), float3(0, 1, 0), float3(0, 0, 1))));
+	light_node->AddComponent(light_);
+	root_node.AddChild(light_node);
 
 	ps_ = SyncLoadParticleSystem(ResLoader::Instance().Locate("Fire.psml"));
 	ps_->Gravity(0.5f);
 	ps_->MediaDensity(0.5f);
-	root_node.AddChild(ps_);
+	root_node.AddChild(ps_->RootNode());
 
 	float const SCALE = 6;
-	ps_->TransformToParent(MathLib::scaling(SCALE, SCALE, SCALE));
+	ps_->RootNode()->TransformToParent(MathLib::scaling(SCALE, SCALE, SCALE));
 	ps_->Emitter(0)->ModelMatrix(MathLib::translation(light_->Position() / SCALE));
 
 	scene_fb_ = rf.MakeFrameBuffer();
-	scene_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
+	scene_fb_->Viewport()->Camera(re.CurFrameBuffer()->Viewport()->Camera());
 	depth_to_linear_pp_ = SyncLoadPostProcess("Depth.ppml", "DepthToLinear");
 	copy_pp_ = SyncLoadPostProcess("Copy.ppml", "Copy");
 	add_copy_pp_ = SyncLoadPostProcess("Copy.ppml", "AddBilinearCopy");
@@ -209,7 +169,7 @@ void VDMParticleApp::OnCreate()
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("VDMParticle.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("VDMParticle.uiml"));
 	dialog_ = UIManager::Instance().GetDialogs()[0];
 
 	id_particle_rendering_type_static_ = dialog_->IDFromName("ParticleRenderingTypeStatic");
@@ -231,13 +191,13 @@ void VDMParticleApp::OnCreate()
 	this->CtrlCameraHandler(*dialog_->Control<UICheckBox>(id_ctrl_camera_));
 
 	half_res_fb_ = rf.MakeFrameBuffer();
-	half_res_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
+	half_res_fb_->Viewport()->Camera(re.CurFrameBuffer()->Viewport()->Camera());
 
 	quarter_res_fb_ = rf.MakeFrameBuffer();
-	quarter_res_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
+	quarter_res_fb_->Viewport()->Camera(re.CurFrameBuffer()->Viewport()->Camera());
 
 	vdm_quarter_res_fb_ = rf.MakeFrameBuffer();
-	vdm_quarter_res_fb_->GetViewport()->camera = re.CurFrameBuffer()->GetViewport()->camera;
+	vdm_quarter_res_fb_->Viewport()->Camera(re.CurFrameBuffer()->Viewport()->Camera());
 
 	depth_to_max_pp_ = SyncLoadPostProcess("Depth.ppml", "DepthToMax");
 	copy_to_depth_pp_ = SyncLoadPostProcess("Depth.ppml", "CopyToDepth");
@@ -253,23 +213,25 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 	RenderDeviceCaps const & caps = re.DeviceCaps();
 
 	static ElementFormat constexpr backup_fmts[] = { EF_B10G11R11F, EF_ABGR8, EF_ARGB8 };
-	ArrayRef<ElementFormat> fmt_options = backup_fmts;
+	std::span<ElementFormat const> fmt_options = backup_fmts;
 	if (!caps.fp_color_support)
 	{
-		fmt_options = fmt_options.Slice(1);
+		fmt_options = fmt_options.subspan(1);
 	}
 	auto fmt = caps.BestMatchRenderTargetFormat(fmt_options, 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
+	auto scene_srv = rf.MakeTextureSrv(scene_tex_);
 
-	fmt = caps.BestMatchRenderTargetFormat({ EF_R16F, EF_R32F }, 1, 0);
+	fmt = caps.BestMatchRenderTargetFormat(MakeSpan({EF_R16F, EF_R32F}), 1, 0);
 	BOOST_ASSERT(fmt != EF_Unknown);
 	scene_depth_tex_ = rf.MakeTexture2D(width, height, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
 
 	scene_ds_tex_ = rf.MakeTexture2D(width, height, 1, 1, EF_D24S8, 1, 0, EAH_GPU_Read | EAH_GPU_Write);
+	scene_ds_srv_ = rf.MakeTextureSrv(scene_ds_tex_);
 
-	depth_to_linear_pp_->InputPin(0, scene_ds_tex_);
-	depth_to_linear_pp_->OutputPin(0, scene_depth_tex_);
+	depth_to_linear_pp_->InputPin(0, scene_ds_srv_);
+	depth_to_linear_pp_->OutputPin(0, rf.Make2DRtv(scene_depth_tex_, 0, 1, 0));
 
 	scene_fb_->Attach(FrameBuffer::Attachment::Color0, rf.Make2DRtv(scene_tex_, 0, 1, 0));
 	scene_fb_->Attach(rf.Make2DDsv(scene_ds_tex_, 0, 1, 0));
@@ -287,7 +249,10 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 		for (uint32_t i = 0; i < 2; ++ i)
 		{
 			low_res_color_texs_.push_back(rf.MakeTexture2D(w, h, 1, 1, fmt, 1, 0, EAH_GPU_Read | EAH_GPU_Write));
+			low_res_color_srvs_.push_back(rf.MakeTextureSrv(low_res_color_texs_.back()));
+			low_res_color_rtvs_.push_back(rf.Make2DRtv(low_res_color_texs_.back(), 0, 1, 0));
 			low_res_max_ds_texs_.push_back(rf.MakeTexture2D(w, h, 1, 1, EF_D24S8, 1, 0, EAH_GPU_Read | EAH_GPU_Write));
+			low_res_max_ds_srvs_.push_back(rf.MakeTextureSrv(low_res_max_ds_texs_.back()));
 			low_res_max_ds_views_.push_back(rf.Make2DDsv(low_res_max_ds_texs_.back(), 0, 1, 0));
 			w /= 2;
 			h /= 2;
@@ -308,13 +273,13 @@ void VDMParticleApp::OnResize(uint32_t width, uint32_t height)
 	vdm_quarter_res_fb_->Attach(FrameBuffer::Attachment::Color2, rf.Make2DRtv(vdm_count_tex_, 0, 1, 0));
 	vdm_quarter_res_fb_->Attach(low_res_max_ds_views_[1]);
 
-	copy_pp_->InputPin(0, scene_tex_);
-	copy_to_depth_pp_->InputPin(0, scene_ds_tex_);
+	copy_pp_->InputPin(0, scene_srv);
+	copy_to_depth_pp_->InputPin(0, scene_ds_srv_);
 
-	vdm_composition_pp_->InputPin(0, low_res_color_texs_[1]);
-	vdm_composition_pp_->InputPin(1, vdm_transition_tex_);
-	vdm_composition_pp_->InputPin(2, vdm_count_tex_);
-	vdm_composition_pp_->InputPin(3, scene_depth_tex_);
+	vdm_composition_pp_->InputPin(0, low_res_color_srvs_[1]);
+	vdm_composition_pp_->InputPin(1, rf.MakeTextureSrv(vdm_transition_tex_));
+	vdm_composition_pp_->InputPin(2, rf.MakeTextureSrv(vdm_count_tex_));
+	vdm_composition_pp_->InputPin(3, rf.MakeTextureSrv(scene_depth_tex_));
 
 	UIManager::Instance().SettleCtrls();
 }
@@ -334,11 +299,11 @@ void VDMParticleApp::ParticleRenderingTypeChangedHandler(KlayGE::UIComboBox cons
 	particle_rendering_type_ = static_cast<ParticleRenderingType>(sender.GetSelectedIndex());
 	if (PRT_VDMQuarterRes == particle_rendering_type_)
 	{
-		ps_->Pass(PT_VDM);
+		ps_->RootNode()->Pass(PT_VDM);
 	}
 	else
 	{
-		ps_->Pass(PT_SimpleForward);
+		ps_->RootNode()->Pass(PT_SimpleForward);
 	}
 }
 
@@ -392,7 +357,7 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 			{
 				so->Visible(true);
 			}
-			ps_->Visible(false);
+			ps_->RootNode()->Visible(false);
 
 			return App3DFramework::URV_NeedFlush;
 		}
@@ -403,7 +368,7 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 			{
 				so->Visible(false);
 			}
-			ps_->Visible(true);
+			ps_->RootNode()->Visible(true);
 
 			depth_to_linear_pp_->Apply();
 
@@ -420,7 +385,8 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 				uint32_t t = (PRT_NaiveHalfRes == particle_rendering_type_) ? 0 : 1;
 				for (uint32_t i = 0; i <= t; ++ i)
 				{
-					TexturePtr const & input_tex = (0 == i) ? scene_ds_tex_ : low_res_max_ds_texs_[i - 1];
+					auto const& input_srv = (0 == i) ? scene_ds_srv_ : low_res_max_ds_srvs_[i - 1];
+					auto const* input_tex = input_srv->TextureResource().get();
 
 					uint32_t const w = input_tex->Width(0);
 					uint32_t const h = input_tex->Height(0);
@@ -428,8 +394,8 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 					depth_to_max_pp_->SetParam(0, float2(0.5f / w, 0.5f / h));
 					depth_to_max_pp_->SetParam(1, float2(static_cast<float>((w + 1) & ~1) / w,
 						static_cast<float>((h + 1) & ~1) / h));
-					depth_to_max_pp_->InputPin(0, input_tex);
-					depth_to_max_pp_->OutputPin(0, low_res_color_texs_[i]);
+					depth_to_max_pp_->InputPin(0, input_srv);
+					depth_to_max_pp_->OutputPin(0, low_res_color_rtvs_[i]);
 					depth_to_max_pp_->OutputFrameBuffer()->Attach(low_res_max_ds_views_[i]);
 					depth_to_max_pp_->Apply();
 				}
@@ -463,7 +429,7 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 
 	case 2:
 	default:
-		ps_->Visible(false);
+		ps_->RootNode()->Visible(false);
 
 		re.BindFrameBuffer(FrameBufferPtr());
 		re.CurFrameBuffer()->AttachedDsv()->ClearDepthStencil(1, 0);
@@ -473,12 +439,12 @@ uint32_t VDMParticleApp::DoUpdate(uint32_t pass)
 		switch (particle_rendering_type_)
 		{
 		case PRT_NaiveHalfRes:
-			add_copy_pp_->InputPin(0, low_res_color_texs_[0]);
+			add_copy_pp_->InputPin(0, low_res_color_srvs_[0]);
 			add_copy_pp_->Apply();
 			break;
 
 		case PRT_NaiveQuarterRes:
-			add_copy_pp_->InputPin(0, low_res_color_texs_[1]);
+			add_copy_pp_->InputPin(0, low_res_color_srvs_[1]);
 			add_copy_pp_->Apply();
 			break;
 

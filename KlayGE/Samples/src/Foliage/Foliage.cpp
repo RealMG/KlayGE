@@ -1,5 +1,4 @@
 #include <KlayGE/KlayGE.hpp>
-#include <KFL/CXX17/iterator.hpp>
 #include <KFL/Util.hpp>
 #include <KFL/Math.hpp>
 #include <KlayGE/Font.hpp>
@@ -11,7 +10,7 @@
 #include <KlayGE/ResLoader.hpp>
 #include <KlayGE/RenderSettings.hpp>
 #include <KlayGE/Mesh.hpp>
-#include <KlayGE/SceneNodeHelper.hpp>
+#include <KlayGE/SceneNode.hpp>
 #include <KlayGE/PostProcess.hpp>
 #include <KlayGE/InfTerrain.hpp>
 #include <KlayGE/LensFlare.hpp>
@@ -23,6 +22,7 @@
 #include <KlayGE/SkyBox.hpp>
 #include <KFL/Half.hpp>
 
+#include <iterator>
 #include <sstream>
 
 #include "SampleCommon.hpp"
@@ -41,9 +41,9 @@ namespace
 		{
 			RenderEffectPtr effect = SyncLoadRenderEffect("FoggySkyBox.fxml");
 
-			gbuffer_mrt_tech_ = effect->TechniqueByName("GBufferSkyBoxMRTTech");
+			gbuffer_tech_ = effect->TechniqueByName("GBufferSkyBoxTech");
 			special_shading_tech_ = effect->TechniqueByName("SpecialShadingFoggySkyBox");
-			this->Technique(effect, gbuffer_mrt_tech_);
+			this->Technique(effect, gbuffer_tech_);
 		}
 		
 		void FogColor(Color const & clr)
@@ -102,14 +102,18 @@ void FoliageApp::OnCreate()
 	auto ambient_light = MakeSharedPtr<AmbientLightSource>();
 	ambient_light->SkylightTex(y_cube, c_cube);
 	ambient_light->Color(float3(0.1f, 0.1f, 0.1f));
-	ambient_light->AddToSceneManager();
+	root_node.AddComponent(ambient_light);
 
+	auto sun_light_node = MakeSharedPtr<SceneNode>(0);
 	sun_light_ = MakeSharedPtr<DirectionalLightSource>();
 	sun_light_->Attrib(LightSource::LSA_NoShadow);
-	sun_light_->Direction(float3(0.267835f, -0.0517653f, -0.960315f));
 	sun_light_->Color(float3(3, 3, 3));
-	sun_light_->AddToSceneManager();
-	
+	sun_light_node->TransformToParent(
+		MathLib::to_matrix(MathLib::axis_to_axis(float3(0, 0, 1), float3(0.267835f, -0.0517653f, -0.960315f))));
+	sun_light_node->AddComponent(sun_light_);
+	sun_light_node->AddComponent(MakeSharedPtr<LensFlareRenderableComponent>());
+	root_node.AddChild(sun_light_node);
+
 	Color fog_color(0.61f, 0.52f, 0.62f, 1);
 	if (Context::Instance().Config().graphics_cfg.gamma)
 	{
@@ -128,16 +132,14 @@ void FoliageApp::OnCreate()
 	terrain_renderable->TextureScale(2, float2(3, 3));
 	terrain_renderable->TextureScale(3, float2(11, 11));
 	terrain_renderable_ = terrain_renderable;
-	root_node.AddChild(MakeSharedPtr<HQTerrainSceneObject>(terrain_renderable));
+	auto terrain_node =
+		MakeSharedPtr<SceneNode>(MakeSharedPtr<HQTerrainRenderableComponent>(terrain_renderable), L"TerrainNode", SceneNode::SOA_Moveable);
+	root_node.AddChild(terrain_node);
 
 	auto skybox = MakeSharedPtr<RenderableFoggySkyBox>();
 	skybox->CompressedCubeMap(y_cube, c_cube);
 	skybox->FogColor(fog_color);
 	root_node.AddChild(MakeSharedPtr<SceneNode>(MakeSharedPtr<RenderableComponent>(skybox), SceneNode::SOA_NotCastShadow));
-
-	auto sun_flare = MakeSharedPtr<LensFlareSceneObject>();
-	sun_flare->Direction(-sun_light_->Direction());
-	root_node.AddChild(sun_flare);
 
 	fog_pp_ = SyncLoadPostProcess("Fog.ppml", "fog");
 	fog_pp_->SetParam(1, float3(fog_color.r(), fog_color.g(), fog_color.b()));
@@ -162,7 +164,7 @@ void FoliageApp::OnCreate()
 		});
 	inputEngine.ActionMap(actionMap, input_handler);
 
-	UIManager::Instance().Load(ResLoader::Instance().Open("Foliage.uiml"));
+	UIManager::Instance().Load(*ResLoader::Instance().Open("Foliage.uiml"));
 	dialog_params_ = UIManager::Instance().GetDialog("Parameters");
 	id_light_shaft_ = dialog_params_->IDFromName("LightShaft");
 	id_fps_camera_ = dialog_params_->IDFromName("FPSCamera");
@@ -243,6 +245,14 @@ void FoliageApp::DoUpdateOverlay()
 			<< terrain_renderable.NumImpostorPlants() << " impostor plants";
 		font_->RenderText(0, 54, Color(1, 1, 1, 1), stream.str(), 16);
 	}
+
+	uint32_t const num_loading_res = ResLoader::Instance().NumLoadingResources();
+	if (num_loading_res > 0)
+	{
+		stream.str(L"");
+		stream << "Loading " << num_loading_res << " resources...";
+		font_->RenderText(100, 300, Color(1, 0, 0, 1), stream.str(), 48);
+	}
 }
 
 uint32_t FoliageApp::DoUpdate(uint32_t pass)
@@ -253,8 +263,8 @@ uint32_t FoliageApp::DoUpdate(uint32_t pass)
 		if (light_shaft_on_)
 		{
 			light_shaft_pp_->SetParam(0, -sun_light_->Direction() * 10000.0f + this->ActiveCamera().EyePos());
-			light_shaft_pp_->InputPin(0, deferred_rendering_->PrevFrameResolvedShadingTex(0));
-			light_shaft_pp_->InputPin(1, deferred_rendering_->PrevFrameResolvedDepthTex(0));
+			light_shaft_pp_->InputPin(0, deferred_rendering_->PrevFrameResolvedShadingSrv(0));
+			light_shaft_pp_->InputPin(1, deferred_rendering_->PrevFrameResolvedDepthSrv(0));
 			light_shaft_pp_->Apply();
 		}
 	}

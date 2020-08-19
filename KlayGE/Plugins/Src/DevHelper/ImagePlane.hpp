@@ -45,12 +45,13 @@ namespace KlayGE
 {
 	class TexMetadata;
 
-	class ImagePlane
+	class ImagePlane final
 	{
 	public:
 		bool Load(std::string_view name, TexMetadata const & metadata);
 		void RgbToLum();
-		void BumpToNormal(float scale);
+		void AlphaToLum();
+		void BumpToNormal(float scale, float amplitude);
 		void NormalToHeight(float min_z);
 		void PrepareNormalCompression(ElementFormat normal_compression_format);
 		void FormatConversion(ElementFormat format);

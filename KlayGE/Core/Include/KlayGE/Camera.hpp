@@ -22,15 +22,19 @@
 #include <KFL/Frustum.hpp>
 #include <KFL/Vector.hpp>
 #include <KFL/Matrix.hpp>
+#include <KlayGE/RenderEngine.hpp>
+#include <KlayGE/SceneComponent.hpp>
 
 namespace KlayGE
 {
 	// 3DÉãÏñ»ú²Ù×÷
 	//////////////////////////////////////////////////////////////////////////////////
-	class KLAYGE_CORE_API Camera : boost::noncopyable, public std::enable_shared_from_this<Camera>
+	class KLAYGE_CORE_API Camera final : public SceneComponent, public std::enable_shared_from_this<Camera>
 	{
 	public:
 		Camera();
+
+		SceneComponentPtr Clone() const override;
 
 		float3 const& EyePos() const;
 		float3 LookAt() const;
@@ -55,18 +59,13 @@ namespace KlayGE
 		float FarPlane() const
 			{ return far_plane_; }
 
-		void ViewParams(float3 const & eye_pos, float3 const & look_at);
-		void ViewParams(float3 const & eye_pos, float3 const & look_at, float3 const & up_vec);
 		void ProjParams(float fov, float aspect, float near_plane, float far_plane);
 		void ProjOrthoParams(float w, float h, float near_plane, float far_plane);
 		void ProjOrthoOffCenterParams(float left, float top, float right, float bottom, float near_plane, float far_plane);
 
-		void BindUpdateFunc(std::function<void(Camera&, float, float)> const & update_func);
+		void MainThreadUpdate(float app_time, float elapsed_time) override;
 
-		void Update(float app_time, float elapsed_time);
-
-		void AddToSceneManager();
-		void DelFromSceneManager();
+		void DirtyTransforms();
 
 		float4x4 const & ViewMatrix() const;
 		float4x4 const & ProjMatrix() const;
@@ -89,10 +88,11 @@ namespace KlayGE
 		bool JitterMode() const;
 		void JitterMode(bool jitter);
 
+		void Active(RenderEffectConstantBuffer& camera_cbuffer, uint32_t index, float4x4 const& model_mat, float4x4 const& inv_model_mat,
+			float4x4 const& prev_model_mat, bool model_mat_dirty, float4x4 const& cascade_crop_mat, bool need_cascade_crop_mat) const;
+
 	private:
-		float		look_at_dist_;
-		float4x4	view_mat_;
-		float4x4	inv_view_mat_;
+		float		look_at_dist_ = 1;
 
 		float		fov_;
 		float		aspect_;
@@ -112,14 +112,13 @@ namespace KlayGE
 		mutable float4x4	view_proj_mat_wo_adjust_;
 		mutable float4x4	inv_view_proj_mat_wo_adjust_;
 		mutable bool		view_proj_mat_wo_adjust_dirty_ = true;
+		mutable bool		camera_dirty_ = true;
 
 		mutable Frustum	frustum_;
 		mutable bool	frustum_dirty_ = true;
 
 		uint32_t	mode_ = 0;
 		int cur_jitter_index_ = 0;
-
-		std::function<void(Camera&, float, float)> update_func_;
 	};
 }
 

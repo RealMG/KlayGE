@@ -35,13 +35,14 @@
 
 #include <KlayGE/PreDeclare.hpp>
 #include <KlayGE/Renderable.hpp>
+#include <KlayGE/RenderEngine.hpp>
 #include <KlayGE/RenderLayout.hpp>
 #include <KlayGE/SceneComponent.hpp>
 #include <KlayGE/Signal.hpp>
 
 namespace KlayGE
 {
-	class KLAYGE_CORE_API SceneNode : boost::noncopyable, public std::enable_shared_from_this<SceneNode>
+	class KLAYGE_CORE_API SceneNode final : boost::noncopyable, public std::enable_shared_from_this<SceneNode>
 	{
 	public:
 		enum SOAttrib
@@ -59,7 +60,7 @@ namespace KlayGE
 		SceneNode(std::wstring_view name, uint32_t attrib);
 		SceneNode(SceneComponentPtr const& component, uint32_t attrib);
 		SceneNode(SceneComponentPtr const& component, std::wstring_view name, uint32_t attrib);
-		virtual ~SceneNode();
+		~SceneNode();
 
 		std::wstring_view Name() const;
 		void Name(std::wstring_view name);
@@ -125,6 +126,7 @@ namespace KlayGE
 		void RemoveComponent(SceneComponentPtr const& component);
 		void RemoveComponent(SceneComponent* component);
 		void ClearComponents();
+		void ReplaceComponent(uint32_t index, SceneComponentPtr const& component);
 
 		void ForEachComponent(std::function<void(SceneComponent&)> const & callback) const;
 		template <typename T>
@@ -145,13 +147,15 @@ namespace KlayGE
 		float4x4 const& InverseTransformToParent() const;
 		float4x4 const& TransformToWorld() const;
 		float4x4 const& InverseTransformToWorld() const;
+		float4x4 const& PrevTransformToWorld() const;
 		AABBox const& PosBoundOS() const;
 		AABBox const& PosBoundWS() const;
 		void UpdateTransforms();
 		void UpdatePosBoundSubtree();
 		bool Updated() const;
-		void VisibleMark(BoundOverlap vm);
-		BoundOverlap VisibleMark() const;
+		void FillVisibleMark(BoundOverlap vm);
+		void VisibleMark(uint32_t camera_index, BoundOverlap vm);
+		BoundOverlap VisibleMark(uint32_t camera_index) const;
 
 		using UpdateEvent = Signal::Signal<void(SceneNode&, float, float)>;
 		UpdateEvent& OnSubThreadUpdate()
@@ -163,23 +167,25 @@ namespace KlayGE
 			return main_thread_update_event_;
 		}
 
-		virtual void SubThreadUpdate(float app_time, float elapsed_time);
-		virtual void MainThreadUpdate(float app_time, float elapsed_time);
+		void SubThreadUpdate(float app_time, float elapsed_time);
+		void MainThreadUpdate(float app_time, float elapsed_time);
 
 		uint32_t Attrib() const;
 		bool Visible() const;
 		void Visible(bool vis);
 
+		std::vector<VertexElement>& InstanceFormat();
 		std::vector<VertexElement> const & InstanceFormat() const;
-		virtual void const * InstanceData() const;
+		void InstanceData(void* data);
+		void const * InstanceData() const;
 
 		// For select mode
-		virtual void ObjectID(uint32_t id);
-		virtual void SelectMode(bool select_mode);
+		void ObjectID(uint32_t id);
+		void SelectMode(bool select_mode);
 		bool SelectMode() const;
 
 		// For deferred only
-		virtual void Pass(PassType type);
+		void Pass(PassType type);
 
 		bool TransparencyBackFace() const;
 		bool TransparencyFrontFace() const;
@@ -204,15 +210,17 @@ namespace KlayGE
 
 		std::vector<SceneComponentPtr> components_;
 		std::vector<VertexElement> instance_format_;
+		void* instance_data_;
 
 		float4x4 xform_to_parent_  = float4x4::Identity();
 		mutable float4x4 xform_to_world_ = float4x4::Identity();
+		mutable float4x4 prev_xform_to_world_ = float4x4::Identity();
 		float4x4 inv_xform_to_parent_ = float4x4::Identity();
 		mutable float4x4 inv_xform_to_world_ = float4x4::Identity();
 		std::unique_ptr<AABBox> pos_aabb_os_;
 		std::unique_ptr<AABBox> pos_aabb_ws_;
 		bool pos_aabb_dirty_ = true;
-		BoundOverlap visible_mark_ = BO_No;
+		std::array<BoundOverlap, RenderEngine::PredefinedCameraCBuffer::max_num_cameras> visible_marks_;
 
 		UpdateEvent sub_thread_update_event_;
 		UpdateEvent main_thread_update_event_;
